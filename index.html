@@ -319,7 +319,7 @@ const fyOf=f=>/^\d{4}/.test(f||'')?+String(f).slice(0,4):Y0;
 const yearM=(r,y)=>y>=Y0?r.my[y]:D.luz[y][r.c-1];
 const TODAY=NOW.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
 
-const S={tab:'pagos',pr:null,ult:null,rsub:'general',ing:[],aj:[],car:[],cdel:null,xedit:null,xdel:null,pcon:'atrasado',exp:{},edit:null,imp:null,gastosX:[],gedit:null,gdel:null,gopen:false,sel:{},selAmt:{},selCasa:0,q:'',filt:'todas',sort:'casa',casa:1,pagos:[],del:null,gq:'',gcat:'todas',gy:String(CY),store:'local'};
+const S={tab:'pagos',pr:null,ult:null,rsub:'general',ing:[],aj:[],car:[],cdel:null,xedit:null,xdel:null,pcon:'atrasado',exp:{},edit:null,imp:null,gastosX:[],pry:[],pedit:null,pop:null,pdel:null,gedit:null,gdel:null,gopen:false,sel:{},selAmt:{},selCasa:0,q:'',filt:'todas',sort:'casa',casa:1,pagos:[],del:null,gq:'',gcat:'todas',gy:String(CY),store:'local'};
 let db=null,pagosCol=null,gastosCol=null;
 
 /* ---------- cálculo ---------- */
@@ -900,10 +900,69 @@ function renderGastos(){
   </details>
   <div class="bar"><input id="gq" class="search" type="search" placeholder="Buscar gasto (poda, cámara, luz, portón…)" value="${esc(S.gq)}" aria-label="Buscar gasto"></div>
   <div class="bar">${cats.map(c=>`<button class="chip" data-gcat="${esc(c)}" aria-pressed="${S.gcat===c}">${c==='todas'?'Todas':esc(c)}</button>`).join('')}</div>
+  <div class="bar"><button class="btn ghost" data-gx="pdf">Descargar PDF</button><button class="btn ghost" data-gx="png">Descargar imagen</button></div>
   <div class="sub" style="margin-bottom:8px">${L.length} gastos · ${money(sum(L.map(g=>g.m)),2)}${L.length>lim?` · mostrando los primeros ${lim}, afina la búsqueda`:''}</div>
   <div class="tw" style="max-height:520px;overflow:auto"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Descripción / área</th><th>Categoría</th><th class="r">Importe</th><th></th></tr></thead><tbody>
   ${L.slice(0,lim).map(g=>`<tr><td class="mono">${fecha(g.f)}</td><td>${esc(g.c)}</td><td>${esc([g.d,g.a,g.s].filter(Boolean).join(' · '))}</td><td>${esc(g.cat)}</td><td class="num">${g.m?money(g.m,2):'$0'}</td><td style="white-space:nowrap">${g.extra?(S.gdel===g.id?`<button class="btn sm danger" data-gdel2="${esc(g.id)}">Confirmar</button> <button class="btn sm ghost" data-gdel0="1">Cancelar</button>`:`<button class="btn sm ghost" data-gedit="${esc(g.id)}">Editar</button> <button class="btn sm ghost" data-gdel="${esc(g.id)}">Eliminar</button>`):''}</td></tr>`).join('')}
   </tbody></table>${L.length?'':'<div class="empty">Sin resultados.</div>'}</div>`;
+}
+
+function gastosFiltrados(){
+  const base=S.gy==='todos'?G:G.filter(g=>String(g.y)===S.gy);
+  const q=S.gq.trim().toLowerCase();
+  const L=base.filter(g=>(S.gcat==='todas'||g.cat===S.gcat)&&(!q||(g.c+' '+g.d+' '+g.a).toLowerCase().includes(q)));
+  L.sort((a,b)=>b.f.localeCompare(a.f));return L;
+}
+function gastosMeta(L){
+  const per=S.gy==='todos'?'Todos los años':'Año '+S.gy;
+  const fil=[per,S.gcat!=='todas'?'Categoría: '+S.gcat:'',S.gq.trim()?'Búsqueda: '+S.gq.trim():''].filter(Boolean).join(' · ');
+  const cat={};for(const g of L)cat[g.cat]=(cat[g.cat]||0)+g.m;
+  return {fil,tot:sum(L.map(g=>g.m)),cats:Object.entries(cat).sort((a,b)=>b[1]-a[1]),file:'gastos-plaza-patos-'+(S.gy==='todos'?'todos':S.gy)};
+}
+async function gastosExport(kind){
+  const L=gastosFiltrados();if(!L.length)return toast('No hay gastos para exportar con este filtro');
+  const m=gastosMeta(L);
+  if(kind==='pdf'){
+    const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return toast('No se pudo cargar el generador de PDF. Usa la imagen.');
+    try{
+      const pdf=new J({unit:'mm',format:'letter'}),W=215.9,H=279.4,mg=12;let y=0,pg=0;
+      const cols=[['Fecha',mg,22],['Concepto',mg+24,52],['Descripción / área',mg+78,60],['Categoría',mg+140,30]];
+      const head=()=>{pg++;pdf.setFillColor(12,59,81);pdf.rect(0,0,W,22,'F');pdf.setTextColor(255);pdf.setFont('helvetica','bold');pdf.setFontSize(14);pdf.text('Plaza de los Patos · Gastos',mg,10);pdf.setFont('helvetica','normal');pdf.setFontSize(9);pdf.text(m.fil,mg,16.5);pdf.text('Generado: '+fecha(isoHoy()),W-mg,16.5,{align:'right'});
+        pdf.setTextColor(0);y=30;pdf.setFont('helvetica','bold');pdf.setFontSize(8.5);cols.forEach(c=>pdf.text(c[0],c[1],y));pdf.text('Importe',W-mg,y,{align:'right'});pdf.setDrawColor(150);pdf.line(mg,y+1.5,W-mg,y+1.5);y+=6;pdf.setFont('helvetica','normal')};
+      head();
+      for(const g of L){
+        const d=pdf.splitTextToSize([g.d,g.a,g.s].filter(Boolean).join(' · '),58),c=pdf.splitTextToSize(String(g.c),50),n=Math.max(d.length,c.length,1),h=n*4+1.5;
+        if(y+h>H-18){pdf.setFontSize(8);pdf.setTextColor(120);pdf.text('Página '+pg,W/2,H-8,{align:'center'});pdf.setTextColor(0);pdf.addPage();head()}
+        pdf.setFontSize(8.5);pdf.text(fecha(g.f),cols[0][1],y);pdf.text(c,cols[1][1],y);pdf.text(d,cols[2][1],y);pdf.text(String(g.cat),cols[3][1],y);pdf.text(g.m?money(g.m,2):'$0',W-mg,y,{align:'right'});y+=h;
+      }
+      if(y+14+m.cats.length*4.5>H-18){pdf.addPage();head()}
+      y+=2;pdf.setDrawColor(150);pdf.line(mg,y,W-mg,y);y+=6;pdf.setFont('helvetica','bold');pdf.setFontSize(10);pdf.text(L.length+' gastos',mg,y);pdf.text('Total '+money(m.tot,2),W-mg,y,{align:'right'});y+=7;
+      pdf.setFontSize(8.5);pdf.text('Por categoría',mg,y);y+=5;pdf.setFont('helvetica','normal');
+      for(const [k,v] of m.cats){if(y>H-16){pdf.addPage();head()}pdf.text(String(k),mg+2,y);pdf.text(money(v,2),W-mg,y,{align:'right'});y+=4.5}
+      pdf.setFontSize(8);pdf.setTextColor(120);pdf.text('Página '+pg,W/2,H-8,{align:'center'});
+      await saveFile(m.file+'.pdf',pdf.output('arraybuffer'));
+    }catch(e){toast('No se pudo generar el PDF')}
+    return;
+  }
+  // imagen PNG
+  const MAXR=150,rows=L.slice(0,MAXR),SC=2,W=1000,mar=24,rh=26,hdr=84,top=36;
+  const extra=L.length>MAXR?1:0,catH=m.cats.length*22+50,H=hdr+top+rows.length*rh+extra*24+catH+40;
+  const cv=document.createElement('canvas');cv.width=W*SC;cv.height=H*SC;const c=cv.getContext('2d');c.scale(SC,SC);
+  const FB='"IBM Plex Sans","Segoe UI",system-ui,sans-serif';
+  c.fillStyle='#fff';c.fillRect(0,0,W,H);c.fillStyle='#0c3b51';c.fillRect(0,0,W,hdr);
+  c.fillStyle='#fff';c.font=`700 24px ${FB}`;c.fillText('Plaza de los Patos · Gastos',mar,36);c.font=`400 14px ${FB}`;c.fillText(m.fil,mar,60);
+  c.textAlign='right';c.fillText(L.length+' gastos · '+money(m.tot,2),W-mar,60);c.textAlign='left';
+  const fit=(s,w)=>{s=String(s);if(c.measureText(s).width<=w)return s;while(s.length>1&&c.measureText(s+'…').width>w)s=s.slice(0,-1);return s+'…'};
+  const X=[mar,mar+104,mar+360,mar+700];let y=hdr+top-10;
+  c.fillStyle='#333';c.font=`700 13px ${FB}`;['Fecha','Concepto','Descripción / área','Categoría'].forEach((h,i)=>c.fillText(h,X[i],y));c.textAlign='right';c.fillText('Importe',W-mar,y);c.textAlign='left';
+  c.strokeStyle='#999';c.beginPath();c.moveTo(mar,y+8);c.lineTo(W-mar,y+8);c.stroke();y+=rh-2;
+  rows.forEach((g,i)=>{if(i%2){c.fillStyle='#f3f6f8';c.fillRect(mar-6,y-17,W-2*mar+12,rh)}
+    c.fillStyle='#111';c.font=`400 13px ${FB}`;c.fillText(fecha(g.f),X[0],y);c.fillText(fit(g.c,X[2]-X[1]-10),X[1],y);c.fillText(fit([g.d,g.a,g.s].filter(Boolean).join(' · '),X[3]-X[2]-10),X[2],y);c.fillText(fit(g.cat,W-mar-90-X[3]),X[3],y);c.textAlign='right';c.fillText(g.m?money(g.m,2):'$0',W-mar,y);c.textAlign='left';y+=rh});
+  if(extra){c.fillStyle='#a33';c.font=`400 13px ${FB}`;c.fillText('Se muestran los primeros '+MAXR+' de '+L.length+'. Usa el PDF para la lista completa.',mar,y);y+=24}
+  y+=14;c.strokeStyle='#999';c.beginPath();c.moveTo(mar,y-14);c.lineTo(W-mar,y-14);c.stroke();
+  c.fillStyle='#111';c.font=`700 14px ${FB}`;c.fillText('Por categoría',mar,y);y+=22;c.font=`400 13px ${FB}`;
+  for(const [k,v] of m.cats){c.fillText(String(k),mar+8,y);c.textAlign='right';c.fillText(money(v,2),W-mar,y);c.textAlign='left';y+=22}
+  const b=await new Promise(r=>cv.toBlob(r,'image/png'));await saveFile(m.file+'.png',await b.arrayBuffer());
 }
 
 /* ---------- historial de casa ---------- */
@@ -977,7 +1036,41 @@ function projects(){
    {n:'Inspección y reparación de fugas',a:'2023-2024',cost:'$250 + $162 por casa',rec:sum(D.fuga.map(sum)),pend:none(i=>D.fuga[i][0]===0||D.fuga[i][1]===0),notes:['Inspección $8,000 y reparación de fugas $15,000.','Saldo según hoja: $884 ("en deuda plaza").']},
    {n:'Pistón Erreka para portón',a:'2024',cost:'$250 por casa',rec:sum(D.pist),pend:none(i=>D.pist[i]===0),notes:['Aportación $12,400 + remanente anterior $20,000 − pistón $30,000 = $2,400 "en deuda".']},
    {n:'Puerta peatonal y llaveros TAG',a:'2023',cost:'$285 + $45 por llavero',rec:sum(D.peat.map(x=>x.apor)),pend:none(i=>C[i].p[5]),notes:[`${sum(D.peat.map(x=>x.ll.length))} llaveros registrados en ${D.peat.filter(x=>x.ll.length).length} casas.`]},
-  ];
+  ].map((p,i)=>{const o=PO[i];return o?{...p,idx:i,ed:1,n:o.n||p.n,a:o.a||p.a,cost:o.cost||p.cost,notes:o.notes!=null?String(o.notes).split('\n').map(s=>s.trim()).filter(Boolean):p.notes}:{...p,idx:i}});
+}
+let PO={};
+async function savePO(){
+  try{localStorage.setItem('plazapatos-proyover',JSON.stringify(PO))}catch(_){}
+  if(db){try{await db.doc('config/proyover').set({m:PO})}catch(e){toast('Cambio guardado solo en este navegador')}}
+}
+function pryStats(p){const N=D.casas.length,cost=+p.cost||0,ap=p.ap||{};let rec=0;const pend=[];for(let c=1;c<=N;c++){const v=+ap[c]||0;rec+=v;if(cost>0&&v<cost)pend.push(c)}return {N,cost,rec,meta:cost*N,pend}}
+function pryForm(){
+  const k=S.pedit;if(!k)return '';
+  let v={n:'',a:String(CY),cost:'',desc:''},tit='Nuevo proyecto',base=false;
+  if(String(k).startsWith('b')){const i=+String(k).slice(1),p=projects()[i];base=true;tit='Editar proyecto: '+p.n;v={n:p.n,a:p.a,cost:p.cost,desc:p.notes.join('\n')}}
+  else if(k!=='new'){const p=S.pry.find(x=>x.id===k);if(p){tit='Editar proyecto';v={n:p.n,a:p.a,cost:p.cost,desc:p.desc||''}}}
+  return `<form id="prf" class="form" style="margin:14px 0;padding:14px;border:1px solid var(--line,#ccd);border-radius:12px"><h3 style="margin:0">${esc(tit)}</h3>
+    <label class="f">Nombre del proyecto<input id="pfn" type="text" required value="${esc(v.n)}" placeholder="Ej. Pintura de fachada"></label>
+    <label class="f">Año<input id="pfa" type="text" value="${esc(v.a)}" style="font-size:16px"></label>
+    <label class="f">${base?'Costo (texto)':'Costo por casa'}<input id="pfc" ${base?'type="text"':'type="number" min="0" step="any"'} value="${esc(v.cost)}" placeholder="${base?'$250 por casa':'500'}" style="font-size:16px"></label>
+    <label class="f">${base?'Notas (una por línea)':'Descripción / notas'}<textarea id="pfd" rows="4" style="font:inherit;padding:8px;border:1px solid #bbb;border-radius:8px">${esc(v.desc)}</textarea></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Guardar</button><button class="btn ghost" type="button" data-pcancel="1">Cancelar</button>${base&&PO[+String(k).slice(1)]?'<button class="btn ghost" type="button" data-pres="'+String(k).slice(1)+'">Restablecer original</button>':''}</div></form>`;
+}
+function pryCards(){
+  if(!S.pry.length)return '<div class="legend">Aún no hay proyectos nuevos. Pulsa «Nuevo proyecto» para registrar uno y capturar lo que aporta cada casa.</div>';
+  return `<div class="grid two">${[...S.pry].sort((a,b)=>(b.ts||0)-(a.ts||0)).map(p=>{const s=pryStats(p),open=S.pop===p.id;
+    return `<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><h2 style="margin:0">${esc(p.n)}</h2><span class="sub">${esc(p.a||'')}</span></div>
+    <div class="sub" style="margin:4px 0 10px">${s.cost?money(s.cost,2)+' por casa · ':''}recaudado <b class="mono">${money(s.rec,2)}</b>${s.meta?' de '+money(s.meta,2):''}</div>
+    ${s.cost?`<div><span class="pill ${s.pend.length?'crit':'good'}">${s.pend.length} casa${s.pend.length===1?'':'s'} pendiente${s.pend.length===1?'':'s'}</span></div>`:''}
+    ${p.desc?`<div class="note">${esc(p.desc)}</div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sm" data-pap="${esc(p.id)}">${open?'Ocultar aportaciones':'Aportaciones por casa'}</button><button class="btn sm ghost" data-pedit="${esc(p.id)}">Editar</button>${S.pdel===p.id?`<button class="btn sm danger" data-pdel2="${esc(p.id)}">Confirmar eliminar</button><button class="btn sm ghost" data-pdel0="1">Cancelar</button>`:`<button class="btn sm ghost" data-pdel="${esc(p.id)}">Eliminar</button>`}</div>
+    ${open?`<div class="tw" style="max-height:420px;overflow:auto;margin-top:10px"><table><thead><tr><th>Casa</th><th class="r">Aportó</th><th>Estado</th><th></th></tr></thead><tbody>${D.casas.map(h=>{const v=+(p.ap||{})[h.c]||0,ok=s.cost>0&&v>=s.cost;return `<tr><td>Casa ${h.c}</td><td class="r"><input class="pap" type="number" min="0" step="any" data-pid="${esc(p.id)}" data-pc="${h.c}" value="${v||''}" placeholder="0" style="width:96px;font-size:16px;text-align:right"></td><td>${s.cost>0?(ok?'<span class="pill good">Pagado</span>':v>0?'<span class="pill warn">Falta '+money(s.cost-v,2)+'</span>':'<span class="pill crit">Pendiente</span>'):''}</td><td>${s.cost>0&&!ok?`<button class="btn sm ghost" data-pfull="${esc(p.id)}:${h.c}">Completo</button>`:''}</td></tr>`}).join('')}</tbody></table></div>`:''}</div>`}).join('')}</div>`;
+}
+async function pryAp(pid,c,v){
+  const p=S.pry.find(x=>x.id===pid);if(!p)return;
+  const ap={...(p.ap||{})};if(v>0)ap[c]=v;else delete ap[c];
+  const o={...p};delete o.id;o.ap=ap;
+  await updX('pry',pid,o);render();
 }
 function rawTable(rows){
   const w=Math.max(...rows.map(r=>r.length));
@@ -985,7 +1078,8 @@ function rawTable(rows){
 }
 function renderProyectos(){
   const P=projects();
-  $('#t-proyectos').innerHTML=`<div class="grid two">${P.map(p=>`<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><h2 style="margin:0">${esc(p.n)}</h2><span class="sub">${p.a}</span></div>
+  $('#t-proyectos').innerHTML=`<div class="card" style="margin-bottom:18px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Proyectos nuevos</h2><button class="btn" data-pnew="1">＋ Nuevo proyecto</button></div><div class="sub" style="margin-top:4px">${S.store==='db'?'Se guardan en la base compartida.':'Se guardan solo en este navegador.'}</div>${pryForm()}<div style="margin-top:12px">${pryCards()}</div></div>
+  <h2>Proyectos anteriores</h2><div class="grid two">${P.map(p=>`<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><h2 style="margin:0">${esc(p.n)}</h2><span class="sub">${p.a} <button class="btn sm ghost" data-pedit="b${p.idx}">Editar</button></span></div>
     <div class="sub" style="margin:4px 0 10px">${esc(p.cost)} · recaudado por casa <b class="mono">${money(p.rec)}</b></div>
     ${p.pend?`<div><span class="pill ${p.pend.length?'crit':'good'}">${p.pend.length} casa${p.pend.length===1?'':'s'} pendiente${p.pend.length===1?'':'s'}</span></div><div class="ins"><div class="chips">${p.pend.map(c=>`<button data-casa="${c}">Casa ${c}</button>`).join('')}</div></div>`:''}
     ${p.notes.map(n=>`<div class="note">${esc(n)}</div>`).join('')}</div>`).join('')}</div>
@@ -1658,13 +1752,23 @@ function openCasa(c){S.casa=+c;go('recibo');scrollTo(0,0)}
 /* ---------- eventos ---------- */
 document.addEventListener('click',async e=>{
   if(e.target.closest('a[data-go]'))e.preventDefault();
-  const t=e.target.closest('[data-ck],[data-cx],[data-clr],[data-ac],[data-df],[data-dedit],[data-dx],[data-dcp],[data-ry],[data-rx],[data-rsolo],[data-einfo],[data-go],[data-pr],[data-prx],[data-ultx],#prgo,#prcopy,[data-rsub],[data-xedit],[data-xedit0],[data-xdel],[data-xdel0],[data-xdel2],[data-gonew],[data-exp],[data-casa],[data-filt],[data-gcat],[data-gy],[data-edit],[data-edit0],[data-rp],[data-gedit],[data-gedit0],[data-gdel],[data-gdel0],[data-gdel2],#selall,#selnone,#impgo,#impno,#tpl,[data-nav],[data-pay],[data-del],[data-del2],[data-del0],#copy,#csv');
+  const t=e.target.closest('[data-ck],[data-cx],[data-clr],[data-ac],[data-df],[data-dedit],[data-dx],[data-dcp],[data-ry],[data-rx],[data-rsolo],[data-einfo],[data-go],[data-pr],[data-prx],[data-ultx],#prgo,#prcopy,[data-rsub],[data-xedit],[data-xedit0],[data-xdel],[data-xdel0],[data-xdel2],[data-gonew],[data-exp],[data-gx],[data-pnew],[data-pedit],[data-pdel],[data-pdel0],[data-pdel2],[data-pap],[data-pfull],[data-pcancel],[data-pres],[data-casa],[data-filt],[data-gcat],[data-gy],[data-edit],[data-edit0],[data-rp],[data-gedit],[data-gedit0],[data-gdel],[data-gdel0],[data-gdel2],#selall,#selnone,#impgo,#impno,#tpl,[data-nav],[data-pay],[data-del],[data-del2],[data-del0],#copy,#csv');
   if(!t)return;
   if(t.dataset.cx)return cartaAccion(t.dataset.cx);
   if(t.dataset.ck)return cartaLog(t.dataset.ck);
   if(t.dataset.clr){const v=t.dataset.clr;if(v==='1'){S.clr=true;return render()}if(v==='0'){S.clr=false;return render()}
     try{Object.keys(localStorage).filter(k=>k.startsWith('plazapatos-')).forEach(k=>localStorage.removeItem(k))}catch(_){}
     S.clr=false;toast('Datos borrados. Recargando…');setTimeout(()=>location.reload(),600);return}
+  if(t.dataset.gx)return gastosExport(t.dataset.gx);
+  if(t.dataset.pnew){S.pedit='new';return render()}
+  if(t.dataset.pedit){S.pedit=t.dataset.pedit;return render()}
+  if(t.dataset.pcancel){S.pedit=null;return render()}
+  if(t.dataset.pap){S.pop=S.pop===t.dataset.pap?null:t.dataset.pap;return render()}
+  if(t.dataset.pdel){S.pdel=t.dataset.pdel;return render()}
+  if(t.dataset.pdel0){S.pdel=null;return render()}
+  if(t.dataset.pdel2){S.pdel=null;await delX('pry',t.dataset.pdel2);toast('Proyecto eliminado');return render()}
+  if(t.dataset.pres!==undefined){delete PO[t.dataset.pres];S.pedit=null;await savePO();toast('Proyecto restablecido');return render()}
+  if(t.dataset.pfull){const [pid,c]=t.dataset.pfull.split(':'),p=S.pry.find(x=>x.id===pid);if(p)await pryAp(pid,+c,+p.cost||0);return}
   if(t.dataset.ac)return casasAccion(t.dataset.ac);
   if(t.dataset.df){DS.f=t.dataset.df;return render()}
   if(t.dataset.dedit!==undefined){DS.edit=+t.dataset.dedit||null;render();if(DS.edit){const el=document.getElementById('dn');if(el)el.focus()}return}
@@ -1728,6 +1832,7 @@ document.addEventListener('input',e=>{
   else if(e.target.id==='nota'){const n=$('#notaTxt');if(n)n.textContent=e.target.value}
 });
 document.addEventListener('change',e=>{
+  if(e.target.classList&&e.target.classList.contains('pap')){pryAp(e.target.dataset.pid,+e.target.dataset.pc,+e.target.value||0);return}
   if(e.target.id==='cmes'){CS.mes=+e.target.value;render()}
   else if(e.target.id==='cfe'){CS.fecha=e.target.value;render()}
   else if(e.target.id==='sort'){S.sort=e.target.value;render()}
@@ -1812,6 +1917,16 @@ document.addEventListener('submit',async e=>{
     if(S.xedit){const x=S.xedit;S.xedit=null;await updX('aj',x.id,o);toast('Ajuste actualizado')}else{await addX('aj',o);toast('Ajuste guardado en la casa '+o.casa)}
     render();return;
   }
+  if(id==='prf'){
+    e.preventDefault();
+    const n=$('#pfn').value.trim();if(!n)return toast('Escribe el nombre del proyecto');
+    const k=S.pedit;
+    if(String(k).startsWith('b')){PO[+String(k).slice(1)]={n,a:$('#pfa').value.trim(),cost:$('#pfc').value.trim(),notes:$('#pfd').value};S.pedit=null;await savePO();toast('Proyecto actualizado');render();return}
+    const o={n,a:$('#pfa').value.trim(),cost:+$('#pfc').value||0,desc:$('#pfd').value.trim()};
+    if(k==='new'){o.ap={};o.ts=Date.now();S.pedit=null;await addX('pry',o);toast('Proyecto agregado')}
+    else{const p=S.pry.find(x=>x.id===k)||{};o.ap=p.ap||{};o.ts=p.ts||Date.now();S.pedit=null;await updX('pry',k,o);toast('Proyecto actualizado')}
+    render();return;
+  }
   if(id==='gf'){
     e.preventDefault();
     const m=+$('#gm').value,c=$('#gc').value.trim();
@@ -1879,7 +1994,7 @@ async function removeGasto(id){
   if(gastosCol&&!String(id).startsWith('l')){try{await db.doc('gastos/'+id).delete();return}catch(e){toast('No se pudo eliminar');return}}
   S.gastosX=S.gastosX.filter(x=>x.id!==id);lsGSave();render();
 }
-const XC={ing:{ls:'plazapatos-ingresos',col:'ingresos'},aj:{ls:'plazapatos-ajustes',col:'ajustes'},car:{ls:'plazapatos-cartas',col:'cartas'}};
+const XC={ing:{ls:'plazapatos-ingresos',col:'ingresos'},aj:{ls:'plazapatos-ajustes',col:'ajustes'},car:{ls:'plazapatos-cartas',col:'cartas'},pry:{ls:'plazapatos-proyectos',col:'proyectos'}};
 const xcol={};
 function xlsLoad(n){try{return JSON.parse(localStorage.getItem(XC[n].ls)||'[]')}catch(_){return[]}}
 function xlsSave(n){try{localStorage.setItem(XC[n].ls,JSON.stringify(S[n]))}catch(_){}}
@@ -1904,11 +2019,12 @@ async function saveCfg(){
   if(db){try{await db.doc('config/reglas').set(CFG)}catch(e){toast('Reglas guardadas solo en este navegador')}}
 }
 async function initStore(){
-  S.pagos=lsLoad();S.gastosX=lsGLoad();S.ing=xlsLoad('ing');S.aj=xlsLoad('aj');S.car=xlsLoad('car');
+  S.pagos=lsLoad();S.gastosX=lsGLoad();S.ing=xlsLoad('ing');S.aj=xlsLoad('aj');S.car=xlsLoad('car');S.pry=xlsLoad('pry');
   try{const b=JSON.parse(localStorage.getItem('plazapatos-base')||'null');if(b)BASE={...BASE,...b}}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-cfg')||'null');if(c)CFG={...CFG,...c};applyCfg()}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-info')||'null');if(c){INFO=c;applyInfo()}}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-dir')||'null');if(c)DIR=c}catch(_){}
+  try{const c=JSON.parse(localStorage.getItem('plazapatos-proyover')||'null');if(c)PO=c}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-carta')||'null');if(c){delete c.firma;CARTA={...CARTA,...c}}}catch(_){}
   try{const n=+localStorage.getItem('plazapatos-extra');if(n>0)applyExtra(n)}catch(_){}
   try{
@@ -1916,10 +2032,11 @@ async function initStore(){
     if(c){
       db=c;pagosCol=c.collection('pagos');S.store='db';S.pagos=[];
       db.doc('config/reglas').onSnapshot(s=>{if(s.exists){CFG={...CFG,...s.data()};applyCfg();render()}},()=>{});
-      for(const n of ['ing','aj','car']){xcol[n]=c.collection(XC[n].col);S[n]=[];xcol[n].onSnapshot(s=>{S[n]=s.docs.map(d=>({id:d.id,...d.data()}));render()},()=>{xcol[n]=null;S[n]=xlsLoad(n);render()})}
+      for(const n of ['ing','aj','car','pry']){xcol[n]=c.collection(XC[n].col);S[n]=[];xcol[n].onSnapshot(s=>{S[n]=s.docs.map(d=>({id:d.id,...d.data()}));render()},()=>{xcol[n]=null;S[n]=xlsLoad(n);render()})}
       db.doc('config/casas').onSnapshot(s=>{if(s.exists){INFO=(s.data()||{}).m||{};applyInfo();render()}},()=>{});
       db.doc('config/extras').onSnapshot(s=>{if(s.exists){const n=+(s.data()||{}).n||0;if(n!==EXTRA){applyExtra(n);render()}}},()=>{});
       db.doc('config/carta').onSnapshot(s=>{if(s.exists){CARTA={...CARTA,...(s.data()||{})};render()}},()=>{});
+      db.doc('config/proyover').onSnapshot(s=>{if(s.exists){PO=(s.data()||{}).m||{};render()}},()=>{});
       db.doc('config/directorio').onSnapshot(s=>{if(s.exists){DIR=(s.data()||{}).m||{};render()}},()=>{});
       db.doc('config/base').onSnapshot(s=>{if(s.exists){BASE={...BASE,...s.data()};render()}},()=>{});
       gastosCol=c.collection('gastos');S.gastosX=[];
