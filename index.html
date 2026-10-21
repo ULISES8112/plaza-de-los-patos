@@ -257,7 +257,7 @@ const D = {"pn":["Inspección de red","Reparación de fugas (2024)","Seguridad",
 // Datos editables por casa (habitada, N° de control, llaveros TAG): se guardan aparte y se aplican sobre la hoja original
 const N0=D.casas.length;
 const INFO0=D.casas.map((h,i)=>({hab:D.aut20[i].hab,ctl:D.aut20[i].ctl,int:D.aut20[i].int,ll:[...D.peat[i].ll]}));
-let INFO={};
+let INFO={};let PP={};const pflag=(h,i)=>PP[i]?PP[i].includes(h.c):!!h.p[i];const CARD_PN={3:[3],4:[2],5:[0,1],6:[4],7:[5]};
 /* ---------- casas agregadas (otros condominios o ampliaciones) ---------- */
 let EXTRA=0;
 function casaMas(){
@@ -320,7 +320,7 @@ const fyOf=f=>/^\d{4}/.test(f||'')?+String(f).slice(0,4):Y0;
 const yearM=(r,y)=>y>=Y0?r.my[y]:D.luz[y][r.c-1];
 const TODAY=NOW.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
 
-const S={tab:'pagos',pr:null,ult:null,rsub:'general',ing:[],aj:[],car:[],cdel:null,xedit:null,xdel:null,pcon:'atrasado',exp:{},edit:null,imp:null,gastosX:[],pry:[],mul:[],mform:null,mf:null,mdel:null,pedit:null,pop:null,pdel:null,gedit:null,gdel:null,gopen:false,sel:{},selAmt:{},selCasa:0,q:'',filt:'todas',sort:'casa',casa:1,pagos:[],del:null,gq:'',gcat:'todas',gy:String(CY),store:'local'};
+const S={tab:'pagos',pr:null,ult:null,rsub:'general',ing:[],aj:[],car:[],cdel:null,xedit:null,xdel:null,pcon:'atrasado',exp:{},edit:null,imp:null,gastosX:[],pry:[],mul:[],evi:[],mx:null,exdel:null,mform:null,mf:null,mdel:null,pedit:null,pop:null,pdel:null,gedit:null,gdel:null,gopen:false,sel:{},selAmt:{},selCasa:0,q:'',filt:'todas',sort:'casa',casa:1,pagos:[],del:null,gq:'',gcat:'todas',gy:String(CY),store:'local'};
 let db=null,pagosCol=null,gastosCol=null;
 
 /* ---------- cálculo ---------- */
@@ -393,7 +393,7 @@ function calc(){
       const x={y,n,rate,amt:sum(meses.map(m=>m.amt)),meses,ex:ex+ya};fin(x);return x;
     });
     pool+=sum(Object.values(asgY))+sum(Object.values(asgM));
-    let proy=h.p.map((f,i)=>{const as=asgP[i]||0;delete asgP[i];return f?{i,name:D.pn[i],cost:D.pc[i],abon:Math.min(D.pc[i],as),rem:Math.max(0,D.pc[i]-as),ex:Math.max(0,as-D.pc[i])}:null}).filter(Boolean);
+    let proy=h.p.map((f0,i)=>{const f=pflag(h,i);const as=asgP[i]||0;delete asgP[i];return f?{i,name:D.pn[i],cost:D.pc[i],abon:Math.min(D.pc[i],as),rem:Math.max(0,D.pc[i]-as),ex:Math.max(0,as-D.pc[i])}:null}).filter(Boolean);
     pool+=sum(Object.values(asgP))+sum(histY.map(x=>x.ex))+sum(proy.map(x=>x.ex));
     for(const x of histY){for(const m of x.meses){const k=Math.min(pool,m.rem);m.rem-=k;m.abon+=k;pool-=k}fin(x)}
     for(const x of proy){const k=Math.min(pool,x.rem);x.rem-=k;x.abon+=k;pool-=k}
@@ -1058,6 +1058,7 @@ function fmtDefaults(kind,m){
   const hoy=d(isoHoy());
   const base=kind==='acta'?{folio:m?m.folio:'',fecha:m?d(m.fecha):hoy,nombre:dr.n||'',casa:c?'Casa '+c:'',tel:fmtTel(dr.t),finf:m?d(m.fecha):'',art:m&&m.articulo||'',hechos:m&&m.desc||''}
     :{fecha:hoy,nombre:dr.n||'',casa:c?'Casa '+c:'',art:m&&m.articulo||'',desc:m&&m.desc||'',finf:m?d(m.fecha):'',monto:m&&m.monto?String(m.monto):'',limite:m?d(m.limite):''};
+  if(m){const ev=evOf(m.id);if(ev.length){base.anexos=String(ev.length);if(ev.some(e=>/^image\//.test(e.tipo)))base.e_fot=true}}
   return {...base,...((m&&m[kind==='acta'?'acta':'notif'])||{})};
 }
 function fmtPdf(kind,V){
@@ -1168,7 +1169,7 @@ function renderMultas(){
   <div class="sub" style="margin-top:4px">Al registrar una multa, su importe se suma al adeudo de la casa (aparece en el recibo como «Multas»). Al marcarla como pagada deja de sumar y se cuenta como ingreso. ${S.store==='db'?'Se guardan en la base compartida.':'Se guardan solo en este navegador.'}</div>${form}</div>
   <div class="tw"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Casa</th><th>Concepto</th><th class="r">Importe</th><th>Estado</th><th>Formatos</th><th></th></tr></thead><tbody>
   ${L.map(m=>`<tr><td class="mono">${esc(m.folio||'')}</td><td>${fecha(m.fecha)}</td><td>Casa ${m.casa}${(DIR[m.casa]||{}).n?'<div class="sub">'+esc(DIR[m.casa].n)+'</div>':''}</td><td>${esc(m.concepto)}${m.articulo?'<div class="sub">Art. '+esc(m.articulo)+'</div>':''}</td><td class="num">${money(+m.monto||0,2)}</td><td><span class="pill ${MUL_ESTADO[m.estado||'pendiente'][1]}">${MUL_ESTADO[m.estado||'pendiente'][0]}</span>${m.fpago?'<div class="sub">'+fecha(m.fpago)+'</div>':''}</td>
-   <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:acta">Acta</button> <button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:notif">Notificación</button></td>
+   <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:acta">Acta</button> <button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:notif">Notificación</button> <button class="btn sm" data-mn="exp:${esc(m.id)}">Expediente${evOf(m.id).length?' ('+evOf(m.id).length+')':''}</button></td>
    <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="edit:${esc(m.id)}">Editar</button> ${m.estado==='pagada'?`<button class="btn sm ghost" data-mn="reabrir:${esc(m.id)}">Reabrir</button>`:`<button class="btn sm" data-mn="pago:${esc(m.id)}">Marcar pagada</button>`} ${m.estado==='pendiente'?`<button class="btn sm ghost" data-mn="cancelar:${esc(m.id)}">Cancelar multa</button> `:''}${S.mdel===m.id?`<button class="btn sm danger" data-mn="del2:${esc(m.id)}">Confirmar</button> <button class="btn sm ghost" data-mn="del0">No</button>`:`<button class="btn sm ghost" data-mn="del:${esc(m.id)}">Eliminar</button>`}</td></tr>`).join('')}
   </tbody></table>${L.length?'':'<div class="empty">Aún no hay multas registradas.</div>'}</div>`;
 }
@@ -1183,9 +1184,16 @@ async function mulAccion(v){
   if(a==='cancelar'){await upd(x,{estado:'cancelada'});return toast('Multa cancelada: ya no suma al adeudo')}
   if(a==='del'){S.mdel=x;return render()}
   if(a==='del0'){S.mdel=null;return render()}
-  if(a==='del2'){S.mdel=null;await delX('mul',x);toast('Multa eliminada');return render()}
+  if(a==='del2'){S.mdel=null;for(const d of evOf(x))await delX('evi',d.id);await delX('mul',x);toast('Multa eliminada');return render()}
   if(a==='fmt'){const m=x?S.mul.find(q=>q.id===x):null;S.mf={id:x||null,kind:y,V:fmtDefaults(y,m)};return render()}
   if(a==='close'){S.mf=null;return render()}
+  if(a==='exp'){S.mx={id:x};S.exdel=null;return render()}
+  if(a==='exclose'){S.mx=null;S.exdel=null;return render()}
+  if(a==='exopen')return evAbrir(x);
+  if(a==='exdl')return evBajar(x);
+  if(a==='exdel'){S.exdel=x;return render()}
+  if(a==='exdel0'){S.exdel=null;return render()}
+  if(a==='exdel2'){S.exdel=null;await delX('evi',x);toast('Archivo eliminado');return render()}
   if(a==='save'){if(!S.mf||!S.mf.id)return;const m=S.mul.find(q=>q.id===S.mf.id);if(!m)return;const o={...m};delete o.id;o[S.mf.kind==='acta'?'acta':'notif']={...S.mf.V};await updX('mul',m.id,o);toast('Formato guardado');return render()}
   if(a==='print'){if(!S.mf)return;const sp=FMT[S.mf.kind];printFrame(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(sp.title[0])}</title><style>@page{size:letter;margin:7mm}body{margin:0}${FM_CSS_PRINT}</style></head><body>${fmtHtml(sp,S.mf.V,false)}</body></html>`);return}
   if(a==='pdf'){if(!(window.jspdf&&window.jspdf.jsPDF))return toast('No se pudo cargar el generador de PDF. Usa Imprimir.');
@@ -1198,6 +1206,70 @@ function renderFmtModal(){
     <div style="display:flex;gap:8px;flex-wrap:wrap">${f.id?'<button class="btn" data-mn="save">Guardar cambios</button>':''}<button class="btn" data-mn="print">Imprimir</button><button class="btn ghost" data-mn="pdf">Descargar PDF</button><button class="btn ghost" data-mn="close">Cerrar</button></div></div>
    <div class="legend" style="margin:0 0 10px">Escribe directamente sobre el formato. ${f.id?'«Guardar cambios» conserva lo que escribiste en esta multa.':'Este formato en blanco no se guarda; imprímelo o descárgalo.'}</div>
    ${fmtHtml(sp,f.V,true)}</div></div>`;
+}
+
+/* ---------- expediente de evidencia de multas ---------- */
+const EV_MAX_PDF=600*1024,EV_TARGET=520*1024;
+const evOf=id=>S.evi.filter(e=>e.mid===id).sort((a,b)=>(a.ts||0)-(b.ts||0));
+const kb=n=>n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';
+function readURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
+function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src})}
+async function compImg(file){
+  const img=await loadImg(await readURL(file));
+  let sc=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight)),q=.78,out='';
+  for(let k=0;k<8;k++){
+    const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.naturalWidth*sc));cv.height=Math.max(1,Math.round(img.naturalHeight*sc));
+    const c=cv.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,cv.width,cv.height);c.drawImage(img,0,0,cv.width,cv.height);
+    out=cv.toDataURL('image/jpeg',q);
+    if(out.length*0.75<=EV_TARGET)return out;
+    if(q>.52)q-=.08;else sc*=.8;
+  }
+  return out;
+}
+async function evUpload(files){
+  const mid=S.mx&&S.mx.id;if(!mid||!files||!files.length)return;
+  const desc=(($('#evd')||{}).value||'').trim();let ok=0,bad=[];
+  toast('Cargando archivos…');
+  for(const f of files){
+    try{
+      let data,tipo=f.type||'';
+      if(/^image\//.test(tipo)){data=await compImg(f);tipo='image/jpeg'}
+      else if(tipo==='application/pdf'||/\.pdf$/i.test(f.name)){
+        if(f.size>EV_MAX_PDF){bad.push(f.name+' ('+kb(f.size)+': el PDF debe pesar menos de '+kb(EV_MAX_PDF)+')');continue}
+        data=await readURL(f);tipo='application/pdf';
+      }else{bad.push(f.name+' (solo fotos o PDF)');continue}
+      const name=/^image\//.test(f.type||'')?f.name.replace(/\.[^.]+$/,'')+'.jpg':f.name;
+      await addX('evi',{mid,name,tipo,size:Math.round(data.length*0.75),desc,data,ts:Date.now()+ok});ok++;
+    }catch(e){bad.push(f.name)}
+  }
+  if(!(S.store==='db'))render();
+  toast(ok?`${ok} archivo${ok>1?'s':''} agregado${ok>1?'s':''} al expediente`+(bad.length?` · no se pudo: ${bad.length}`:''):'No se pudo agregar: '+bad.join('; '));
+  if(bad.length&&ok)setTimeout(()=>toast('No se pudo agregar: '+bad.join('; ')),2600);
+}
+async function dataBlob(d){const r=await fetch(d.data);return r.blob()}
+async function evAbrir(id){
+  const d=S.evi.find(x=>x.id===id);if(!d)return;
+  try{const u=URL.createObjectURL(await dataBlob(d));const w=window.open(u,'_blank');if(!w){await evBajar(id)}setTimeout(()=>URL.revokeObjectURL(u),60000)}catch(e){toast('No se pudo abrir el archivo')}
+}
+async function evBajar(id){
+  const d=S.evi.find(x=>x.id===id);if(!d)return;
+  try{const b=await dataBlob(d);await saveFile(d.name||('evidencia-'+id),await b.arrayBuffer())}catch(e){toast('No se pudo descargar')}
+}
+function renderEvModal(){
+  const el=$('#modal'),m=S.mul.find(x=>x.id===S.mx.id);
+  if(!m){S.mx=null;el.innerHTML='';return}
+  const L=evOf(m.id);
+  el.innerHTML=`<div class="mdl" data-mn="exclose"><div class="box" role="dialog" aria-modal="true" style="width:min(100%,820px)">
+   <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><div><h2 style="margin:0">Expediente de evidencia</h2><div class="sub">${esc(m.folio||'')} · Casa ${m.casa}${(DIR[m.casa]||{}).n?' · '+esc(DIR[m.casa].n):''} · ${esc(m.concepto)}</div></div><button class="btn ghost" data-mn="exclose">Cerrar</button></div>
+   <div class="card" style="margin:12px 0"><div class="form">
+     <label class="f">Agregar fotos o PDF<input id="evf" type="file" accept="image/*,application/pdf" multiple style="font-size:15px"></label>
+     <label class="f">Descripción (opcional, se aplica a los archivos que subas)<input id="evd" type="text" placeholder="Ej. Foto del vehículo mal estacionado"></label></div>
+   <div class="legend">Las fotos se reducen automáticamente para ahorrar espacio. Los PDF deben pesar menos de ${kb(EV_MAX_PDF)}; si pesa más, tómale una foto o comprímelo. ${S.store==='db'?'Se guardan en la base compartida.':'Se guardan solo en este navegador.'}</div></div>
+   ${L.length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px">${L.map(d=>`<div class="card" style="padding:8px">
+      ${/^image\//.test(d.tipo)?`<img src="${d.data}" alt="${esc(d.name)}" style="width:100%;height:120px;object-fit:cover;border-radius:6px;cursor:pointer" data-mn="exopen:${esc(d.id)}">`:`<div style="height:120px;display:grid;place-items:center;background:var(--wash,#eef3f5);border-radius:6px;font:700 22px var(--f-display);cursor:pointer" data-mn="exopen:${esc(d.id)}">PDF</div>`}
+      <div style="font-size:12px;margin-top:6px;word-break:break-word"><b>${esc(d.name)}</b><div class="sub">${kb(d.size||0)} · ${fecha(new Date(d.ts||Date.now()).toISOString().slice(0,10))}</div>${d.desc?`<div>${esc(d.desc)}</div>`:''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button class="btn sm ghost" data-mn="exopen:${esc(d.id)}">Abrir</button><button class="btn sm ghost" data-mn="exdl:${esc(d.id)}">Descargar</button>${S.exdel===d.id?`<button class="btn sm danger" data-mn="exdel2:${esc(d.id)}">Confirmar</button><button class="btn sm ghost" data-mn="exdel0">No</button>`:`<button class="btn sm ghost" data-mn="exdel:${esc(d.id)}">Eliminar</button>`}</div></div>`).join('')}</div>`:'<div class="empty">Aún no hay evidencia. Agrega fotos, capturas o PDF que respalden la multa.</div>'}
+  </div></div>`;
 }
 
 /* ---------- historial de casa ---------- */
@@ -1218,7 +1290,7 @@ function renderHistorial(){
     const pend=v.filter((x,mi)=>!(+y===CY&&mi>CURM)&&x<tar).length;
     return `<tr><td class="mono"><b>${y}</b></td>${cells}<td class="num">${money(sum(v))}</td><td class="num">${pend?`<span class="pill ${pend>=6?'crit':'warn'}">${pend}</span>`:'<span class="pill good">0</span>'}</td></tr>`}).join('');
   const p=r.proy.length?'':'';
-  const flag=k=>D.casas[i].p[k];
+  const flag=k=>pflag(D.casas[i],k);
   const PJ=i>=N0?[]:[
    ['2º proyecto (aportación 2017)',1000,D.apor1[i],D.apor1[i]>=1000?'ok':'info',D.apor1[i]<1000?`Faltante ${money(1000-D.apor1[i])} · no incluido en el adeudo`:''],
    ['Automatización de portón 2018',null,D.aut18[i],'info',''],
@@ -1270,27 +1342,27 @@ function projects(){
    {n:'Proyecto de seguridad',a:'2021',cost:'$587 por casa',rec:sum(D.seg),pend:none(i=>D.seg[i]===0),notes:['Gastos del proyecto $21,515.32; saldo según hoja $6,260.68.','La hoja anota que falta la aportación de 3 casas pendientes en automatización.']},
    {n:'Inspección y reparación de fugas',a:'2023-2024',cost:'$250 + $162 por casa',rec:sum(D.fuga.map(sum)),pend:none(i=>D.fuga[i][0]===0||D.fuga[i][1]===0),notes:['Inspección $8,000 y reparación de fugas $15,000.','Saldo según hoja: $884 ("en deuda plaza").']},
    {n:'Pistón Erreka para portón',a:'2024',cost:'$250 por casa',rec:sum(D.pist),pend:none(i=>D.pist[i]===0),notes:['Aportación $12,400 + remanente anterior $20,000 − pistón $30,000 = $2,400 "en deuda".']},
-   {n:'Puerta peatonal y llaveros TAG',a:'2023',cost:'$285 + $45 por llavero',rec:sum(D.peat.map(x=>x.apor)),pend:none(i=>C[i].p[5]),notes:[`${sum(D.peat.map(x=>x.ll.length))} llaveros registrados en ${D.peat.filter(x=>x.ll.length).length} casas.`]},
-  ].map((p,i)=>{const o=PO[i];return o?{...p,idx:i,ed:1,n:o.n||p.n,a:o.a||p.a,pend:Array.isArray(o.pend)?o.pend:p.pend,cost:o.cost||p.cost,notes:o.notes!=null?String(o.notes).split('\n').map(s=>s.trim()).filter(Boolean):p.notes}:{...p,idx:i}});
+   {n:'Puerta peatonal y llaveros TAG',a:'2023',cost:'$285 + $45 por llavero',rec:sum(D.peat.map(x=>x.apor)),pend:none(i=>pflag(C[i],5)),notes:[`${sum(D.peat.map(x=>x.ll.length))} llaveros registrados en ${D.peat.filter(x=>x.ll.length).length} casas.`]},
+  ].map((p,i)=>{const pn=CARD_PN[i];if(pn&&pn.some(j=>PP[j]))p={...p,pend:[...new Set(pn.flatMap(j=>D.casas.filter(h=>pflag(h,j)).map(h=>h.c)))].sort((a,b)=>a-b)};const o=PO[i];return o?{...p,idx:i,ed:1,n:o.n||p.n,a:o.a||p.a,pend:Array.isArray(o.pend)?o.pend:p.pend,cost:o.cost||p.cost,notes:o.notes!=null?String(o.notes).split('\n').map(s=>s.trim()).filter(Boolean):p.notes}:{...p,idx:i}});
 }
 let PO={};
 async function savePO(){
-  try{localStorage.setItem('plazapatos-proyover',JSON.stringify(PO))}catch(_){}
-  if(db){try{await db.doc('config/proyover').set({m:PO})}catch(e){toast('Cambio guardado solo en este navegador')}}
+  try{localStorage.setItem('plazapatos-proyover',JSON.stringify({m:PO,pp:PP}))}catch(_){}
+  if(db){try{await db.doc('config/proyover').set({m:PO,pp:PP})}catch(e){toast('Cambio guardado solo en este navegador')}}
 }
 function pryStats(p){const N=D.casas.length,cost=+p.cost||0,ap=p.ap||{};let rec=0;const pend=[];for(let c=1;c<=N;c++){const v=+ap[c]||0;rec+=v;if(cost>0&&v<cost)pend.push(c)}return {N,cost,rec,meta:cost*N,pend}}
 function pryForm(){
   const k=S.pedit;if(!k)return '';
-  let v={n:'',a:String(CY),cost:'',desc:''},tit='Nuevo proyecto',base=false,pendSel=null;
-  if(String(k).startsWith('b')){const i=+String(k).slice(1),p=projects()[i];base=true;pendSel=p.pend||[];tit='Editar proyecto: '+p.n;v={n:p.n,a:p.a,cost:p.cost,desc:p.notes.join('\n')}}
+  let v={n:'',a:String(CY),cost:'',desc:''},tit='Nuevo proyecto',base=false,pendSel=null,pgroups=[];
+  if(String(k).startsWith('b')){const i=+String(k).slice(1),p=projects()[i];base=true;pendSel=p.pend||[];{const pn=CARD_PN[i];pgroups=pn?pn.map(j=>({g:'pn'+j,l:D.pn[j],sel:D.casas.filter(h=>pflag(h,j)).map(h=>h.c)})):[{g:'card',l:'',sel:pendSel}]}tit='Editar proyecto: '+p.n;v={n:p.n,a:p.a,cost:p.cost,desc:p.notes.join('\n')}}
   else if(k!=='new'){const p=S.pry.find(x=>x.id===k);if(p){tit='Editar proyecto';v={n:p.n,a:p.a,cost:p.cost,desc:p.desc||''}}}
   return `<form id="prf" class="form" style="margin:14px 0;padding:14px;border:1px solid var(--line,#ccd);border-radius:12px"><h3 style="margin:0">${esc(tit)}</h3>
     <label class="f">Nombre del proyecto<input id="pfn" type="text" required value="${esc(v.n)}" placeholder="Ej. Pintura de fachada"></label>
     <label class="f">Año<input id="pfa" type="text" value="${esc(v.a)}" style="font-size:16px"></label>
     <label class="f">${base?'Costo (texto)':'Costo por casa'}<input id="pfc" ${base?'type="text"':'type="number" min="0" step="any"'} value="${esc(v.cost)}" placeholder="${base?'$250 por casa':'500'}" style="font-size:16px"></label>
     <label class="f">${base?'Notas (una por línea)':'Descripción / notas'}<textarea id="pfd" rows="4" style="font:inherit;padding:8px;border:1px solid #bbb;border-radius:8px">${esc(v.desc)}</textarea></label>
-    ${base?`<div class="f" style="grid-column:1/-1"><span>Casas pendientes de este proyecto (marca las que aún deben)</span><div class="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${D.casas.map(h=>`<label style="display:inline-flex;gap:4px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:3px 9px"><input type="checkbox" class="pcc" value="${h.c}"${pendSel.includes(h.c)?' checked':''}> ${h.c}</label>`).join('')}</div><div style="display:flex;gap:8px;margin-top:6px"><button class="btn sm ghost" type="button" data-pcall="1">Marcar todas</button><button class="btn sm ghost" type="button" data-pcall="0">Quitar todas</button></div></div>`:''}
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Guardar</button><button class="btn ghost" type="button" data-pcancel="1">Cancelar</button>${base&&PO[+String(k).slice(1)]?'<button class="btn ghost" type="button" data-pres="'+String(k).slice(1)+'">Restablecer original</button>':''}</div></form>`;
+    ${base?`<div class="f" style="grid-column:1/-1"><span>${pgroups.some(g=>g.g!=='card')?'Casas con adeudo de este proyecto: lo que marques aquí se refleja en el adeudo y el recibo de cada casa':'Casas pendientes de este proyecto (marca las que aún deben)'}</span>${pgroups.map(g=>`<div style="margin-top:8px">${g.l?`<b>${esc(g.l)}</b>`:''}<div class="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${D.casas.map(h=>`<label style="display:inline-flex;gap:4px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:3px 9px"><input type="checkbox" class="pcc" data-g="${g.g}" value="${h.c}"${g.sel.includes(h.c)?' checked':''}> ${h.c}</label>`).join('')}</div><div style="display:flex;gap:8px;margin-top:6px"><button class="btn sm ghost" type="button" data-pcall="1|${g.g}">Marcar todas</button><button class="btn sm ghost" type="button" data-pcall="0|${g.g}">Quitar todas</button></div></div>`).join('')}</div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Guardar</button><button class="btn ghost" type="button" data-pcancel="1">Cancelar</button>${base&&(PO[+String(k).slice(1)]||(CARD_PN[+String(k).slice(1)]||[]).some(j=>PP[j]))?'<button class="btn ghost" type="button" data-pres="'+String(k).slice(1)+'">Restablecer original</button>':''}</div></form>`;
 }
 function pryCards(){
   if(!S.pry.length)return '<div class="legend">Aún no hay proyectos nuevos. Pulsa «Nuevo proyecto» para registrar uno y capturar lo que aporta cada casa.</div>';
@@ -1486,6 +1558,7 @@ function openPrint(spec){
 }
 function renderModal(){
   const el=$('#modal');if(!el)return;
+  if(S.mx)return renderEvModal();
   if(S.mf)return renderFmtModal();
   if(!S.pr){el.innerHTML='';return}
   const p=S.pr,d=p.doc,z=SIZES[p.size];
@@ -2000,7 +2073,7 @@ document.addEventListener('click',async e=>{
     S.clr=false;toast('Datos borrados. Recargando…');setTimeout(()=>location.reload(),600);return}
   if(t.dataset.mn){if(t.classList.contains('mdl')&&e.target!==t)return;return mulAccion(t.dataset.mn)}
   if(t.dataset.gx)return gastosExport(t.dataset.gx);
-  if(t.dataset.pcall!==undefined){document.querySelectorAll('.pcc').forEach(x=>x.checked=t.dataset.pcall==='1');return}
+  if(t.dataset.pcall!==undefined){const [pv,pg]=t.dataset.pcall.split('|');document.querySelectorAll('.pcc[data-g="'+pg+'"]').forEach(x=>x.checked=pv==='1');return}
   if(t.dataset.pnew){S.pedit='new';return render()}
   if(t.dataset.pedit){S.pedit=t.dataset.pedit;return render()}
   if(t.dataset.pcancel){S.pedit=null;return render()}
@@ -2008,7 +2081,7 @@ document.addEventListener('click',async e=>{
   if(t.dataset.pdel){S.pdel=t.dataset.pdel;return render()}
   if(t.dataset.pdel0){S.pdel=null;return render()}
   if(t.dataset.pdel2){S.pdel=null;await delX('pry',t.dataset.pdel2);toast('Proyecto eliminado');return render()}
-  if(t.dataset.pres!==undefined){delete PO[t.dataset.pres];S.pedit=null;await savePO();toast('Proyecto restablecido');return render()}
+  if(t.dataset.pres!==undefined){delete PO[t.dataset.pres];(CARD_PN[t.dataset.pres]||[]).forEach(j=>{delete PP[j]});S.pedit=null;await savePO();toast('Proyecto restablecido');return render()}
   if(t.dataset.pfull){const [pid,c]=t.dataset.pfull.split(':'),p=S.pry.find(x=>x.id===pid);if(p)await pryAp(pid,+c,+p.cost||0);return}
   if(t.dataset.ac)return casasAccion(t.dataset.ac);
   if(t.dataset.df){DS.f=t.dataset.df;return render()}
@@ -2074,6 +2147,7 @@ document.addEventListener('input',e=>{
   else if(e.target.id==='nota'){const n=$('#notaTxt');if(n)n.textContent=e.target.value}
 });
 document.addEventListener('change',e=>{
+  if(e.target.id==='evf'){const fl=[...e.target.files];e.target.value='';evUpload(fl);return}
   if(e.target.classList&&e.target.classList.contains('pap')){pryAp(e.target.dataset.pid,+e.target.dataset.pc,+e.target.value||0);return}
   if(e.target.id==='cmes'){CS.mes=+e.target.value;render()}
   else if(e.target.id==='cfe'){CS.fecha=e.target.value;render()}
@@ -2094,7 +2168,7 @@ document.addEventListener('change',e=>{
   else if(e.target.id==='imp')readImport(e.target.files[0]);
   else if(e.target.id==='dimp'){dirImport(e.target.files[0]);e.target.value=''}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(S.pr||S.mf)){S.pr=null;S.mf=null;render()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(S.pr||S.mf||S.mx)){S.pr=null;S.mf=null;S.mx=null;render()}});
 document.addEventListener('input',e=>{const k=e.target&&e.target.dataset&&e.target.dataset.fk;if(k&&S.mf)S.mf.V[k]=e.target.type==='checkbox'?e.target.checked:e.target.value});
 document.addEventListener('toggle',e=>{if(e.target.id==='gdet')S.gopen=e.target.open},true);
 document.addEventListener('submit',async e=>{
@@ -2173,7 +2247,7 @@ document.addEventListener('submit',async e=>{
     e.preventDefault();
     const n=$('#pfn').value.trim();if(!n)return toast('Escribe el nombre del proyecto');
     const k=S.pedit;
-    if(String(k).startsWith('b')){const ob={n,a:$('#pfa').value.trim(),cost:$('#pfc').value.trim(),notes:$('#pfd').value};const chk=[...document.querySelectorAll('.pcc')];if(chk.length){const sel=chk.filter(x=>x.checked).map(x=>+x.value),orig=projects()[+String(k).slice(1)];if(Array.isArray(orig.pend)||sel.length)ob.pend=sel}PO[+String(k).slice(1)]=ob;S.pedit=null;await savePO();toast('Proyecto actualizado');render();return}
+    if(String(k).startsWith('b')){const ob={n,a:$('#pfa').value.trim(),cost:$('#pfc').value.trim(),notes:$('#pfd').value};const idx=+String(k).slice(1),chk=[...document.querySelectorAll('.pcc')];if(chk.length){const gr={};chk.forEach(x=>{(gr[x.dataset.g]=gr[x.dataset.g]||[]);if(x.checked)gr[x.dataset.g].push(+x.value)});for(const g in gr){if(g==='card'){const orig=projects()[idx];if(Array.isArray(orig.pend)||gr[g].length)ob.pend=gr[g]}else{const j=+g.slice(2),base0=D.casas.filter(h=>!!h.p[j]).map(h=>h.c).sort((a,b)=>a-b),cur=gr[g].sort((a,b)=>a-b);if(JSON.stringify(base0)===JSON.stringify(cur))delete PP[j];else PP[j]=cur}}}PO[idx]=ob;S.pedit=null;await savePO();toast('Proyecto actualizado');render();return}
     const o={n,a:$('#pfa').value.trim(),cost:+$('#pfc').value||0,desc:$('#pfd').value.trim()};
     if(k==='new'){o.ap={};o.ts=Date.now();S.pedit=null;await addX('pry',o);toast('Proyecto agregado')}
     else{const p=S.pry.find(x=>x.id===k)||{};o.ap=p.ap||{};o.ts=p.ts||Date.now();S.pedit=null;await updX('pry',k,o);toast('Proyecto actualizado')}
@@ -2198,7 +2272,7 @@ async function saveFile(name,data){
   try{const dl=await claude.use('downloads');if(!dl)throw 0;await dl.save({filename:name,data});toast('Archivo listo');return}catch(_){}
   // en un navegador normal: descarga directa del archivo
   try{
-    const tp=/\.pdf$/i.test(name)?'application/pdf':/\.png$/i.test(name)?'image/png':'text/csv;charset=utf-8';
+    const tp=/\.pdf$/i.test(name)?'application/pdf':/\.png$/i.test(name)?'image/png':/\.jpe?g$/i.test(name)?'image/jpeg':'text/csv;charset=utf-8';
     const u=URL.createObjectURL(new Blob([data],{type:tp}));
     const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(u),5000);toast('Archivo descargado: '+name);return;
@@ -2246,10 +2320,10 @@ async function removeGasto(id){
   if(gastosCol&&!String(id).startsWith('l')){try{await db.doc('gastos/'+id).delete();return}catch(e){toast('No se pudo eliminar');return}}
   S.gastosX=S.gastosX.filter(x=>x.id!==id);lsGSave();render();
 }
-const XC={ing:{ls:'plazapatos-ingresos',col:'ingresos'},aj:{ls:'plazapatos-ajustes',col:'ajustes'},car:{ls:'plazapatos-cartas',col:'cartas'},pry:{ls:'plazapatos-proyectos',col:'proyectos'},mul:{ls:'plazapatos-multas',col:'multas'}};
+const XC={ing:{ls:'plazapatos-ingresos',col:'ingresos'},aj:{ls:'plazapatos-ajustes',col:'ajustes'},car:{ls:'plazapatos-cartas',col:'cartas'},pry:{ls:'plazapatos-proyectos',col:'proyectos'},mul:{ls:'plazapatos-multas',col:'multas'},evi:{ls:'plazapatos-evidencias',col:'evidencias'}};
 const xcol={};
 function xlsLoad(n){try{return JSON.parse(localStorage.getItem(XC[n].ls)||'[]')}catch(_){return[]}}
-function xlsSave(n){try{localStorage.setItem(XC[n].ls,JSON.stringify(S[n]))}catch(_){}}
+function xlsSave(n){try{localStorage.setItem(XC[n].ls,JSON.stringify(S[n]))}catch(_){toast('No hay espacio en este navegador para guardar. Usa la versión en línea con base de datos.')}}
 async function addX(n,o){
   if(xcol[n]){try{await xcol[n].add(o);return}catch(e){toast('No se pudo guardar en la nube. Guardado en este navegador.')}}
   o.id='l'+Date.now()+Math.random().toString(36).slice(2,5);S[n].push(o);xlsSave(n);render();
@@ -2271,12 +2345,12 @@ async function saveCfg(){
   if(db){try{await db.doc('config/reglas').set(CFG)}catch(e){toast('Reglas guardadas solo en este navegador')}}
 }
 async function initStore(){
-  S.pagos=lsLoad();S.gastosX=lsGLoad();S.ing=xlsLoad('ing');S.aj=xlsLoad('aj');S.car=xlsLoad('car');S.pry=xlsLoad('pry');S.mul=xlsLoad('mul');
+  S.pagos=lsLoad();S.gastosX=lsGLoad();S.ing=xlsLoad('ing');S.aj=xlsLoad('aj');S.car=xlsLoad('car');S.pry=xlsLoad('pry');S.mul=xlsLoad('mul');S.evi=xlsLoad('evi');
   try{const b=JSON.parse(localStorage.getItem('plazapatos-base')||'null');if(b)BASE={...BASE,...b}}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-cfg')||'null');if(c)CFG={...CFG,...c};applyCfg()}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-info')||'null');if(c){INFO=c;applyInfo()}}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-dir')||'null');if(c)DIR=c}catch(_){}
-  try{const c=JSON.parse(localStorage.getItem('plazapatos-proyover')||'null');if(c)PO=c}catch(_){}
+  try{const c=JSON.parse(localStorage.getItem('plazapatos-proyover')||'null');if(c){if(c.m!==undefined){PO=c.m||{};PP=c.pp||{}}else PO=c}}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-carta')||'null');if(c){delete c.firma;CARTA={...CARTA,...c}}}catch(_){}
   try{const n=+localStorage.getItem('plazapatos-extra');if(n>0)applyExtra(n)}catch(_){}
   try{
@@ -2284,11 +2358,11 @@ async function initStore(){
     if(c){
       db=c;pagosCol=c.collection('pagos');S.store='db';S.pagos=[];
       db.doc('config/reglas').onSnapshot(s=>{if(s.exists){CFG={...CFG,...s.data()};applyCfg();render()}},()=>{});
-      for(const n of ['ing','aj','car','pry','mul']){xcol[n]=c.collection(XC[n].col);S[n]=[];xcol[n].onSnapshot(s=>{S[n]=s.docs.map(d=>({id:d.id,...d.data()}));render()},()=>{xcol[n]=null;S[n]=xlsLoad(n);render()})}
+      for(const n of ['ing','aj','car','pry','mul','evi']){xcol[n]=c.collection(XC[n].col);S[n]=[];xcol[n].onSnapshot(s=>{S[n]=s.docs.map(d=>({id:d.id,...d.data()}));render()},()=>{xcol[n]=null;S[n]=xlsLoad(n);render()})}
       db.doc('config/casas').onSnapshot(s=>{if(s.exists){INFO=(s.data()||{}).m||{};applyInfo();render()}},()=>{});
       db.doc('config/extras').onSnapshot(s=>{if(s.exists){const n=+(s.data()||{}).n||0;if(n!==EXTRA){applyExtra(n);render()}}},()=>{});
       db.doc('config/carta').onSnapshot(s=>{if(s.exists){CARTA={...CARTA,...(s.data()||{})};render()}},()=>{});
-      db.doc('config/proyover').onSnapshot(s=>{if(s.exists){PO=(s.data()||{}).m||{};render()}},()=>{});
+      db.doc('config/proyover').onSnapshot(s=>{if(s.exists){PO=(s.data()||{}).m||{};PP=(s.data()||{}).pp||{};render()}},()=>{});
       db.doc('config/directorio').onSnapshot(s=>{if(s.exists){DIR=(s.data()||{}).m||{};render()}},()=>{});
       db.doc('config/base').onSnapshot(s=>{if(s.exists){BASE={...BASE,...s.data()};render()}},()=>{});
       gastosCol=c.collection('gastos');S.gastosX=[];
