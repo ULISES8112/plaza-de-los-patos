@@ -217,6 +217,7 @@ span.rc.ok{background:var(--accent)}span.rc.par{background:var(--warn)}span.rc.f
 <section id="t-reportes" hidden></section>
 <section id="t-directorio" hidden></section>
 <section id="t-carta" hidden></section>
+<section id="t-multas" hidden></section>
 <section id="t-revision" hidden></section>
 </div>
 <div id="toast" class="toast" hidden></div>
@@ -319,7 +320,7 @@ const fyOf=f=>/^\d{4}/.test(f||'')?+String(f).slice(0,4):Y0;
 const yearM=(r,y)=>y>=Y0?r.my[y]:D.luz[y][r.c-1];
 const TODAY=NOW.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
 
-const S={tab:'pagos',pr:null,ult:null,rsub:'general',ing:[],aj:[],car:[],cdel:null,xedit:null,xdel:null,pcon:'atrasado',exp:{},edit:null,imp:null,gastosX:[],pry:[],pedit:null,pop:null,pdel:null,gedit:null,gdel:null,gopen:false,sel:{},selAmt:{},selCasa:0,q:'',filt:'todas',sort:'casa',casa:1,pagos:[],del:null,gq:'',gcat:'todas',gy:String(CY),store:'local'};
+const S={tab:'pagos',pr:null,ult:null,rsub:'general',ing:[],aj:[],car:[],cdel:null,xedit:null,xdel:null,pcon:'atrasado',exp:{},edit:null,imp:null,gastosX:[],pry:[],mul:[],mform:null,mf:null,mdel:null,pedit:null,pop:null,pdel:null,gedit:null,gdel:null,gopen:false,sel:{},selAmt:{},selCasa:0,q:'',filt:'todas',sort:'casa',casa:1,pagos:[],del:null,gq:'',gcat:'todas',gy:String(CY),store:'local'};
 let db=null,pagosCol=null,gastosCol=null;
 
 /* ---------- cálculo ---------- */
@@ -359,7 +360,7 @@ function calc(){
     const v26=venc.reduce((s,x)=>s+x.falta,0);
     const recT=recM.reduce((s,x)=>s+x.rec,0);
     const abonos=(ab[h.c]||[]);
-    const ajustes=S.aj.filter(a=>a.casa===h.c);const ajT=sum(ajustes.map(a=>a.tipo==='condonacion'?-a.monto:a.monto));
+    const ajustes=S.aj.filter(a=>a.casa===h.c);const ajT=sum(ajustes.map(a=>a.tipo==='condonacion'?-a.monto:a.monto));const multas=S.mul.filter(a=>a.casa===h.c&&a.estado==='pendiente');const mulT=sum(multas.map(a=>+a.monto||0));
     const abT=abonos.reduce((s,x)=>s+x.monto,0);
     // asignación de abonos por mes, año o proyecto; lo no asignado se aplica a lo más antiguo
     const asgY={},asgM={},asgP={};let pool=0;
@@ -400,10 +401,10 @@ function calc(){
     const hist=sum(histY.map(x=>x.rem)),proyT=sum(proy.map(x=>x.rem));
     const bruto=hist+proyT+v26+recT;
     const credito=Math.min(pool,bruto),saldoFavor=Math.max(0,pool-bruto);
-    const total=Math.max(0,bruto-credito+ajT);
+    const total=Math.max(0,bruto-credito+ajT+mulT);
     const histMeses=sum(srcs.map(x=>x.n));
     const estado=total<=0?'ok':(total>=CRIT?'crit':'warn');
-    return {c:h.c,ajustes,ajT,m,my,raw,histY,hist,histMeses,proy,proyT,venc,v26,recM,recT,owed,abonos,abT,bruto,credito,total,estado,saldoFavor};
+    return {c:h.c,ajustes,ajT,multas,mulT,m,my,raw,histY,hist,histMeses,proy,proyT,venc,v26,recM,recT,owed,abonos,abT,bruto,credito,total,estado,saldoFavor};
   });
 }
 let R=[];
@@ -433,7 +434,7 @@ const sum=a=>a.reduce((s,x)=>s+x,0);
 rebuildG();
 
 /* ---------- navegación ---------- */
-const TABS=[['pagos','Pagos'],['gastos','Gastos'],['reportes','Reportes'],['recibo','Recibo de adeudo'],['carta','Carta de no adeudo'],['historial','Historial de casa'],['proyectos','Proyectos'],['resumen','Resumen'],['revision','Revisión de datos'],['casas','Buscador de casas'],['directorio','Directorio']];
+const TABS=[['pagos','Pagos'],['gastos','Gastos'],['reportes','Reportes'],['recibo','Recibo de adeudo'],['carta','Carta de no adeudo'],['multas','Multas'],['historial','Historial de casa'],['proyectos','Proyectos'],['resumen','Resumen'],['revision','Revisión de datos'],['casas','Buscador de casas'],['directorio','Directorio']];
 function go(t){S.tab=t;try{history.replaceState(null,'','#'+t)}catch(e){}render()}
 function renderTabs(){
   const nIns=inconsist().filter(x=>x.sev==='crit'||x.sev==='warn').length;
@@ -457,7 +458,7 @@ function cobYear(y){let t=0;for(const r of R)t+=sum(yearM(r,y));return t}
 function finanzas(y=CY){
   const cuotas=y===CY?sum(cobranza()):cobYear(y);
   const abonos=sum(S.pagos.filter(p=>p.tipo!=='cuota26'&&fyOf(p.fecha)===y).map(p=>p.monto));
-  const otros=sum(S.ing.filter(i=>fyOf(i.f)===y).map(i=>+i.monto||0));
+  const otros=sum(S.ing.filter(i=>fyOf(i.f)===y).map(i=>+i.monto||0))+sum(S.mul.filter(m=>m.estado==='pagada'&&fyOf(m.fpago)===y).map(m=>+m.monto||0));
   const ini=y<=Y0?BASE.remanente+BASE.extra:finanzas(y-1).disp;   // el saldo de un año pasa al siguiente
   const ingresos=cuotas+abonos+ini+otros;
   const gastos=YT[y]||0;
@@ -526,7 +527,7 @@ function resAdeudos(){
   const yy=NOW.getFullYear();
   const ed=S.xedit&&S.xedit.n==='aj'?S.aj.find(x=>x.id===S.xedit.id)||{}:{};
   const tot=sum(R.map(r=>r.total)),ajN=sum(R.map(r=>r.ajT));
-  const parts=[{l:'Cuotas atrasadas',v:sum(R.map(r=>r.hist))},{l:'Proyectos',v:sum(R.map(r=>r.proyT))},{l:`Cuotas ${yy}`,v:sum(R.map(r=>r.v26))},{l:'Recargos',v:sum(R.map(r=>r.recT))}];
+  const parts=[{l:'Cuotas atrasadas',v:sum(R.map(r=>r.hist))},{l:'Proyectos',v:sum(R.map(r=>r.proyT))},{l:`Cuotas ${yy}`,v:sum(R.map(r=>r.v26))},{l:'Recargos',v:sum(R.map(r=>r.recT))},{l:'Multas',v:sum(R.map(r=>r.mulT))}];
   const L=[...S.aj].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
   return `<div class="grid kpis">
     <div class="kpi"><div class="l">Adeudo total</div><div class="v">${money(tot)}</div><div class="n">${R.filter(r=>r.total>0).length} casas con adeudo</div></div>
@@ -680,8 +681,9 @@ function renderRecibo(){
       ${r.recM.length?`<h3>Recargo por morosidad (${CFG.pct}%)</h3><div class="line"><span>${r.recM.map(v=>M3[v.i]).join(', ')}<span class="sm">${r.recM.length} cuota${r.recM.length>1?'s':''} vencida${r.recM.length>1?'s':''} desde ${MES[CFG.desde]}</span></span><span class="num">${money(r.recT)}</span></div>`:''}
       ${r.proy.length?`<h3>Proyectos pendientes</h3>${r.proy.map(p=>`<div class="line"><span>${esc(p.name)}${p.abon?`<span class="sm">abonado ${money(p.abon)} de ${money(p.cost)}</span>`:''}</span><span class="num">${money(p.rem)}</span></div>`).join('')}`:''}
       ${r.ajustes.length?`<h3>Ajustes</h3>${r.ajustes.map(a=>`<div class="line"><span>${esc(a.concepto||(a.tipo==='condonacion'?'Condonación':'Cargo extra'))}<span class="sm">${fecha(a.fecha)}</span></span><span class="num">${a.tipo==='condonacion'?'−':'+'}${money(a.monto)}</span></div>`).join('')}`:''}
+      ${r.multas.length?`<h3>Multas</h3>${r.multas.map(a=>`<div class="line"><span>${esc(a.concepto||'Multa')}<span class="sm">${fecha(a.fecha)}${a.folio?' · '+esc(a.folio):''}</span></span><span class="num">${money(+a.monto||0)}</span></div>`).join('')}`:''}
       ${r.abonos.length?`<h3>Abonos registrados (ya descontados)</h3>${r.abonos.map(a=>`<div class="line"><span>${esc(tipoTxt(a))}<span class="sm">${fecha(a.fecha)}${a.nota?' · '+esc(a.nota):''}</span></span><span class="num">${money(a.monto)}</span></div>`).join('')}${r.credito?`<div class="line"><span>Saldo a favor aplicado a cuotas ${NOW.getFullYear()}</span><span class="num">−${money(r.credito)}</span></div>`:''}`:''}
-      ${!r.bruto&&!r.abT?`<div class="empty">Esta casa no tiene adeudos.</div>`:''}
+      ${!r.bruto&&!r.abT&&!r.mulT?`<div class="empty">Esta casa no tiene adeudos.</div>`:''}
       <div class="tot"><span>Total a pagar</span><span class="mono">${money(r.total)}</span></div>
       ${r.saldoFavor?`<div class="note">Saldo a favor: ${money(r.saldoFavor)}</div>`:''}
       <div class="note" id="notaTxt"></div>
@@ -965,6 +967,239 @@ async function gastosExport(kind){
   const b=await new Promise(r=>cv.toBlob(r,'image/png'));await saveFile(m.file+'.png',await b.arrayBuffer());
 }
 
+/* ---------- multas y formatos (acta de infracción / notificación de multa) ---------- */
+const fF=(l,k)=>({t:'f',l,k}),fL=l=>({t:'lbl',l}),fC=(n,items)=>({t:'cks',n,items}),fT=(l,k,n)=>({t:'ta',l,k,n}),fP=(x,c)=>({t:'p',x,c}),fE=(k,def)=>({t:'pe',k,def}),fB=l=>({t:'fb',l}),fS=(x,x2)=>({t:'sig',x,x2});
+const LEY_ACTA='La presente Acta de Infracción constituye un documento administrativo mediante el cual se hacen constar hechos presuntamente contrarios al Reglamento Interno del Condominio.\nLa elaboración de esta acta no implica por sí misma la imposición de una sanción; sin embargo, servirá como antecedente para que la Administración del Condominio realice el análisis, seguimiento y las actuaciones correspondientes conforme a lo establecido en el Reglamento Interno, los acuerdos de la Asamblea de Condóminos y demás disposiciones aplicables.\nEn caso de acreditarse la infracción, se procederá a la emisión de la notificación correspondiente y, en su caso, a la aplicación de las medidas, sanciones o multas previstas.\nSi el residente o condómino se negara a recibir o firmar la presente acta, se dejará constancia en el apartado de Observaciones de Entrega, considerándose debidamente notificada para efectos administrativos a través de cualquiera de los medios autorizados por el Reglamento Interno del Condominio.';
+const ACUSE_ACTA='Se hace constar que la presente Acta de Infracción fue notificada al condómino o residente señalado, quien queda enterado de los hechos asentados en la misma para los efectos administrativos conducentes y el seguimiento correspondiente por parte de la Administración del Condominio.';
+const ACUSE_ACTA2='La recepción de la presente acta acredita que el residente ha sido informado de los hechos asentados y del inicio del procedimiento administrativo correspondiente.';
+const FMT={
+ acta:{title:['ACTA DE INFRACCIÓN','AL REGLAMENTO','DE PLAZA DE LOS PATOS'],head:[['Folio','folio'],['Fecha','fecha'],['Hora','hora']],file:'acta-infraccion',rows:[
+  {w:[1,1],cols:[
+   {bar:'DATOS DEL CONDÓMINO O RESIDENTE',items:[fF('Nombre','nombre'),fF('Casa/Departamento/Lote','casa'),fF('Teléfono','tel'),fF('Correo electrónico','correo')]},
+   {bar:'DATOS DEL REPORTANTE',items:[fF('Nombre','rnombre'),fL('Cargo:'),fC(3,[['Administrador(a)','c_adm'],['Seguridad','c_seg'],['Comité de Vigilancia','c_com'],['Condómino','c_con'],['Otro:','c_otro','c_otrot']])]}]},
+  {w:[1,1],cols:[
+   {bar:'DESCRIPCIÓN DE LOS HECHOS',items:[fF('Fecha de la infracción','finf'),fF('Hora de la infracción','hinf'),fF('Lugar donde ocurrió','lugar'),fT('Descripción detallada de los hechos:','hechos',3)]},
+   {bar:'ARTÍCULO(S) PRESUNTAMENTE INFRINGIDO(S)',items:[fF('Artículo(s)','art'),fT('Descripción del artículo:','artd',3)]}]},
+  {w:[3,2],cols:[
+   {bar:'EVIDENCIA RECABADA',items:[fC(2,[['Fotografías','e_fot'],['Video','e_vid'],['Reporte de Seguridad','e_seg'],['Testigos','e_tes'],['Inspección Administrativa','e_ins'],['Queja Formal','e_que'],['Otra:','e_otra','e_otrat']])]},
+   {bar:'',items:[fT('Descripción de la evidencia:','evid',4)]}]},
+  {w:[1],cols:[{plain:1,items:[{t:'inl',k:'anexos'}]}]},
+  {w:[1,1],cols:[
+   {bar:'DATOS DE TESTIGOS (EN SU CASO)',items:[fL('Testigo 1:'),fF('Nombre','t1n'),fF('Domicilio/Casa','t1d'),fB('Firma')]},
+   {bar:'',items:[fL('Testigo 2:'),fF('Nombre','t2n'),fF('Domicilio/Casa','t2d'),fB('Firma')]}]},
+  {w:[1],cols:[{bar:'OBSERVACIONES',items:[fT('','obs',2)]}]},
+  {w:[1],cols:[{bar:'ELABORÓ EL ACTA',nb:1,items:[fS('Nombre y Firma','Cargo')]}]},
+  {w:[1,1],cols:[
+   {bar:'ACUSE DE CONOCIMIENTO Y SEGUIMIENTO',items:[fP(ACUSE_ACTA),fF('Nombre del Condómino o Residente','nrec'),fB('Firma'),fF('Fecha de recepción','frec'),fP(ACUSE_ACTA2)]},
+   {bar:'OBSERVACIONES DE ENTREGA',items:[fT('','obsent',4)]}]},
+  {w:[1],cols:[{bar:'LEYENDA',items:[fE('ley',LEY_ACTA)]}]}
+ ]},
+ notif:{title:['NOTIFICACIÓN DE MULTA','POR INFRACCIÓN AL REGLAMENTO','DE PLAZA DE LOS PATOS'],head:[['Fecha','fecha']],file:'notificacion-multa',rows:[
+  {w:[1],cols:[{plain:1,items:[fL('PARA:'),fF('Nombre del Condómino','nombre'),fF('Casa/Departamento/Lote','casa'),fP('Por medio de la presente se le informa que, derivado del Acta de Infracción correspondiente, se determinó la existencia de una infracción al Reglamento Interno del Condominio.',1)]}]},
+  {w:[1],cols:[{bar:'DETALLE DE LA INFRACCIÓN',items:[fF('Artículo infringido','art'),fT('Descripción:','desc',2),fF('Fecha de la infracción','finf')]}]},
+  {w:[3,2],cols:[
+   {bar:'EVIDENCIA QUE SUSTENTA LA SANCIÓN',items:[fC(2,[['Fotografías','e_fot'],['Queja formal presentada por residente','e_que'],['Video','e_vid'],['Inspección de la Administración','e_ins'],['Reporte de Seguridad','e_seg'],['Otra:','e_otra','e_otrat'],['Testigos','e_tes']])]},
+   {bar:'',items:[fT('Descripción de la evidencia:','evid',4)]}]},
+  {w:[1],cols:[{plain:1,items:[{t:'inl',k:'anexos'}]}]},
+  {w:[1],cols:[{bar:'MONTO DE LA SANCIÓN',items:[fF('Multa aplicada  $','monto'),fF('Fecha límite de pago','limite'),fT('Forma de pago:','forma',2)]}]},
+  {w:[1],cols:[{plain:1,items:[fP('En caso de no realizar el pago dentro del plazo establecido, se generarán los recargos correspondientes conforme al Reglamento Interno y los acuerdos vigentes de la Asamblea de Condóminos.',1),fP('Atentamente,',1),fS('Administrador(a) del Condominio','Firma')]}]},
+  {w:[1,1],cols:[
+   {bar:'ACUSE DE RECIBIDO',items:[fF('Recibí la presente Notificación de Multa en fecha','frec'),fF('Nombre del Condómino o Residente','nrec'),fB('Firma')]},
+   {bar:'OBSERVACIONES DE ENTREGA',items:[fT('','obsent',4)]}]},
+  {w:[1,1,1],rbar:'LEYENDAS',cols:[
+   {plain:1,items:[fL('1. DERECHO DE ACLARACIÓN'),fE('ley1','El condómino o residente tendrá derecho a presentar por escrito las aclaraciones, argumentos o evidencias que considere pertinentes respecto de la presente notificación dentro de los dos (2) días naturales siguientes a la fecha de su entrega o notificación.\nLas aclaraciones deberán presentarse ante la Administración del Condominio dentro del plazo señalado. Una vez transcurrido dicho término sin que exista manifestación alguna por parte del interesado, la infracción y la sanción correspondiente se tendrán por consentidas y se incorporarán para su aplicación al estado de cuenta respectivo.')]},
+   {plain:1,items:[fL('2. NEGATIVA DE FIRMA'),fE('ley2','En caso de que el residente o condómino se niegue a firmar de recibido, la presente notificación se considerará legalmente entregada mediante los mecanismos de comunicación autorizados por el Reglamento Interno del Condominio, incluyendo correo electrónico, mensajería, publicación en los medios oficiales de comunicación o cualquier otro medio aprobado por la Asamblea de Condóminos.\nLa negativa a firmar no exime del cumplimiento de las obligaciones, sanciones, multas, recargos o demás disposiciones aplicables derivadas de la presente notificación.')]},
+   {plain:1,items:[fL('3. ACEPTACIÓN TÁCITA'),fE('ley3','La falta de presentación de aclaraciones dentro del plazo establecido constituirá aceptación tácita de los hechos señalados en la presente notificación para efectos administrativos, sin perjuicio de las acciones que correspondan conforme al Reglamento Interno, la Escritura Constitutiva y la legislación aplicable.')]}]}
+ ]}
+};
+const FMCSS=`.fm{font:12px/1.35 "IBM Plex Sans","Segoe UI",system-ui,sans-serif;color:#111;background:#fff;border:2px solid #0c3b51;border-radius:14px;padding:12px}
+.fm *{box-sizing:border-box}
+.fm .fh{display:flex;align-items:center;gap:12px;margin-bottom:10px}.fm .fh img{width:70px;height:70px;border-radius:50%;object-fit:contain;background:#c6dfe2}
+.fm .ft{flex:1;text-align:center;color:#0c3b51;font-weight:800;line-height:1.15}.fm .ft b{display:block;font-size:24px}.fm .ft span{display:block;font-size:14px;color:#111}
+.fm .fk{min-width:190px}
+.fm .fr{display:grid;gap:8px;margin-bottom:8px}
+.fm .fc{border:1px solid #0c3b51;border-radius:4px;overflow:hidden;break-inside:avoid}.fm .fc.pl{border:0}
+.fm .fbar{background:#0c3b51;color:#fff;font-weight:700;text-align:center;padding:3px 6px;font-size:12px}.fm .fbar.nb{width:50%;margin:6px auto 0}
+.fm .fi{padding:6px 10px}
+.fm .ff{display:flex;align-items:flex-end;gap:6px;margin:4px 0;min-height:22px}.fm .ff>span{white-space:nowrap}
+.fm .ff input,.fm .ff b{flex:1;min-width:0;border:0;border-bottom:1px solid #444;background:transparent;font:inherit;padding:1px 2px;min-height:20px}.fm .ff b{font-weight:500}
+.fm .lb{font-weight:600;margin:4px 0}
+.fm .cks{display:grid;gap:3px 10px;margin:3px 0}.fm .cks label{display:flex;align-items:flex-end;gap:5px}.fm .cks input[type=text]{flex:1;min-width:30px;border:0;border-bottom:1px solid #444;font:inherit;background:transparent}
+.fm .bx{font-size:15px;line-height:1}
+.fm .tl{margin:4px 0 0}
+.fm textarea,.fm .tx{display:block;width:100%;border:0;resize:none;background:repeating-linear-gradient(to bottom,transparent 0,transparent 21px,#444 21px,#444 22px);line-height:22px;font:inherit;line-height:22px;padding:0 2px;overflow:hidden;min-height:22px;white-space:pre-wrap}
+.fm textarea.pe,.fm .pe{background:none;line-height:1.35;font-size:10.5px;min-height:40px}
+.fm .pp{font-size:10.5px;margin:4px 0}.fm .pp.c{text-align:center;font-size:12px;margin:8px 0}
+.fm .sg{width:55%;margin:34px auto 2px;border-top:1px solid #444;text-align:center;font-size:11px;padding-top:2px}
+.fm input,.fm textarea{border-radius:0;outline:none;box-shadow:none}
+.fm .fbl{display:flex;gap:6px;margin:10px 0 4px}.fm .fbl i{flex:1;border-bottom:1px solid #444}`;
+function fmtHtml(spec,V,edit){
+  const val=k=>V[k]??'';
+  const inp=(k,ph)=>edit?`<input type="text" data-fk="${k}" value="${esc(val(k))}"${ph?` placeholder="${ph}"`:''}>`:`<b>${esc(val(k))}</b>`;
+  const item=it=>{
+    if(it.t==='f')return `<div class="ff"><span>${esc(it.l)}:</span>${inp(it.k)}</div>`;
+    if(it.t==='lbl')return `<div class="lb">${esc(it.l)}</div>`;
+    if(it.t==='fb')return `<div class="fbl"><span>${esc(it.l)}:</span><i></i></div>`;
+    if(it.t==='cks')return `<div class="cks" style="grid-template-columns:repeat(${it.n},minmax(0,1fr))">${it.items.map(([l,k,tk])=>`<label>${edit?`<input type="checkbox" data-fk="${k}"${V[k]?' checked':''}>`:`<span class="bx">${V[k]?'☒':'☐'}</span>`}<span>${esc(l)}</span>${tk?(edit?`<input type="text" data-fk="${tk}" value="${esc(val(tk))}">`:`<b style="font-weight:500;border-bottom:1px solid #444;flex:1;min-height:14px">${esc(val(tk))}</b>`):''}</label>`).join('')}</div>`;
+    if(it.t==='ta')return `${it.l?`<div class="tl">${esc(it.l)}</div>`:''}${edit?`<textarea data-fk="${it.k}" rows="${it.n}" style="min-height:${it.n*22}px">${esc(val(it.k))}</textarea>`:`<div class="tx" style="min-height:${it.n*22}px">${esc(val(it.k))}</div>`}`;
+    if(it.t==='p')return `<div class="pp${it.c?' c':''}">${esc(it.x)}</div>`;
+    if(it.t==='pe'){const v=V[it.k]!==undefined?V[it.k]:it.def;return edit?`<textarea class="pe" data-fk="${it.k}" rows="${Math.max(4,Math.ceil(v.length/70))}">${esc(v)}</textarea>`:`<div class="pe tx">${esc(v)}</div>`}
+    if(it.t==='sig')return `<div class="sg">${esc(it.x)}<br>${esc(it.x2||'')}</div>`;
+    if(it.t==='inl')return `<div class="pp" style="font-size:12px">Se anexan a la presente ${edit?`<input type="text" data-fk="${it.k}" value="${esc(val(it.k))}" style="width:60px;border:0;border-bottom:1px solid #444;font:inherit;text-align:center">`:`<b>${esc(val(it.k))||'______'}</b>`} documento(s), fotografía(s), video(s), reporte(s) o medio(s) probatorio(s).</div>`;
+    return '';
+  };
+  const col=c=>`<div class="fc${c.plain?' pl':''}">${c.bar?`<div class="fbar${c.nb?' nb':''}">${esc(c.bar)}</div>`:(c.bar===''?'<div class="fbar" style="visibility:hidden">·</div>':'')}<div class="fi">${c.items.map(item).join('')}</div></div>`;
+  const LOGO=document.querySelector('img.logo');
+  return `<div class="fm"><div class="fh">${LOGO?`<img src="${LOGO.src}" alt="">`:''}<div class="ft"><b>${esc(spec.title[0])}</b><span>${esc(spec.title[1])}</span><span>${esc(spec.title[2])}</span></div><div class="fk">${spec.head.map(([l,k])=>`<div class="ff"><span>${esc(l)}:</span>${inp(k)}</div>`).join('')}</div></div>
+  ${spec.rows.map(r=>`<div class="fr" style="grid-template-columns:${r.w.map(x=>x+'fr').join(' ')}">${r.rbar?`<div class="fbar" style="grid-column:1/-1">${esc(r.rbar)}</div>`:''}${r.cols.map(col).join('')}</div>`).join('')}</div>`;
+}
+function fmtDefaults(kind,m){
+  const c=m?m.casa:null,dr=c?(DIR[c]||{}):{},d=s=>{if(!s)return '';const [y,mo,da]=s.split('-');return `${da}/${mo}/${y}`};
+  const hoy=d(isoHoy());
+  const base=kind==='acta'?{folio:m?m.folio:'',fecha:m?d(m.fecha):hoy,nombre:dr.n||'',casa:c?'Casa '+c:'',tel:fmtTel(dr.t),finf:m?d(m.fecha):'',art:m&&m.articulo||'',hechos:m&&m.desc||''}
+    :{fecha:hoy,nombre:dr.n||'',casa:c?'Casa '+c:'',art:m&&m.articulo||'',desc:m&&m.desc||'',finf:m?d(m.fecha):'',monto:m&&m.monto?String(m.monto):'',limite:m?d(m.limite):''};
+  return {...base,...((m&&m[kind==='acta'?'acta':'notif'])||{})};
+}
+function fmtPdf(kind,V){
+  const spec=FMT[kind],J=window.jspdf.jsPDF,pdf=new J({unit:'mm',format:'letter'});
+  const W=215.9,H=279.4,mg=7,TW=W-2*mg,ink=[12,59,81];
+  const S_=s=>pdfSafe(s);
+  const LOGO=document.querySelector('img.logo');
+  function frame(){pdf.setDrawColor(...ink);pdf.setLineWidth(.6);pdf.roundedRect(3.5,3.5,W-7,H-7,3,3,'S')}
+  function header(y){
+    if(LOGO){try{pdf.addImage(LOGO.src,'PNG',mg+1,y,21,21*116/128)}catch(_){}}
+    pdf.setTextColor(...ink);pdf.setFont('helvetica','bold');pdf.setFontSize(19);pdf.text(S_(spec.title[0]),W/2-8,y+9,{align:'center'});
+    pdf.setFontSize(11);pdf.setTextColor(20);pdf.text(S_(spec.title[1]),W/2-8,y+15,{align:'center'});pdf.text(S_(spec.title[2]),W/2-8,y+20,{align:'center'});
+    let hy=y+6;pdf.setFontSize(9);for(const [l,k] of spec.head){pdf.setFont('helvetica','normal');pdf.text(S_(l+':'),W-mg-52,hy);pdf.setDrawColor(70);pdf.setLineWidth(.2);pdf.line(W-mg-40,hy+0.8,W-mg-1,hy+0.8);pdf.text(S_(V[k]||''),W-mg-39,hy);hy+=6}
+    return y+22;
+  }
+  const U=u=>u;
+  // dibuja o mide un renglón; devuelve alto
+  function row(r,y,u,dry){
+    const n=r.w.length,gap=3,tot=r.w.reduce((a,b)=>a+b,0),avail=TW-gap*(n-1);let x=mg,hmax=0;const hs=[];
+    const rb=r.rbar?4.4+1:0;if(rb&&!dry){pdf.setFillColor(...ink);pdf.rect(mg,y,TW,4.4,'F');pdf.setTextColor(255);pdf.setFont('helvetica','bold');pdf.setFontSize(8.5);pdf.text(S_(r.rbar),W/2,y+3.3,{align:'center'})}
+    y+=rb;
+    r.cols.forEach((c,ci)=>{
+      const cw=avail*r.w[ci]/tot;let yy=y;
+      if(c.bar!==undefined&&c.bar!==null&&!c.plain){const bw=c.nb?cw*.5:cw,bx=c.nb?x+(cw-bw)/2:x;if(!dry&&c.bar){pdf.setFillColor(...ink);pdf.rect(bx,yy,bw,4.4,'F');pdf.setTextColor(255);pdf.setFont('helvetica','bold');pdf.setFontSize(8.5);pdf.text(S_(c.bar),bx+bw/2,yy+3.3,{align:'center'})}yy+=4.4}
+      yy+=0.6;const ix=x+2.5,iw=cw-5;
+      for(const it of c.items){
+        if(it.t==='f'){if(!dry){pdf.setFont('helvetica','normal');pdf.setFontSize(8.5);pdf.setTextColor(20);const lab=S_(it.l+':'),lw=pdf.getTextWidth(lab);pdf.text(lab,ix,yy+u*0.72);pdf.setDrawColor(70);pdf.setLineWidth(.2);pdf.line(ix+lw+1,yy+u*0.8,ix+iw,yy+u*0.8);pdf.setFontSize(8.5);pdf.text(S_(V[it.k]||''),ix+lw+2,yy+u*0.7)}yy+=u}
+        else if(it.t==='lbl'){if(!dry){pdf.setFont('helvetica','bold');pdf.setFontSize(8.5);pdf.setTextColor(20);pdf.text(S_(it.l),ix,yy+u*0.65)}yy+=u*0.9}
+        else if(it.t==='fb'){if(!dry){pdf.setFont('helvetica','normal');pdf.setFontSize(8.5);pdf.setTextColor(20);const lab=S_(it.l+':'),lw=pdf.getTextWidth(lab);pdf.text(lab,ix,yy+u*0.72);pdf.setDrawColor(70);pdf.setLineWidth(.2);pdf.line(ix+lw+1,yy+u*0.8,ix+iw,yy+u*0.8)}yy+=u}
+        else if(it.t==='cks'){const nr=Math.ceil(it.items.length/it.n),cwid=iw/it.n;
+          if(!dry)it.items.forEach(([l,k,tk],i)=>{const cx=ix+(i%it.n)*cwid,cy=yy+Math.floor(i/it.n)*u*0.95;pdf.setDrawColor(40);pdf.setLineWidth(.25);pdf.rect(cx,cy+u*0.2,3,3);if(V[k]){pdf.setLineWidth(.4);pdf.line(cx+.5,cy+u*0.2+.5,cx+2.5,cy+u*0.2+2.5);pdf.line(cx+2.5,cy+u*0.2+.5,cx+.5,cy+u*0.2+2.5)}
+            pdf.setFont('helvetica','normal');pdf.setTextColor(20);const lab=S_(l);let fz=8.2;pdf.setFontSize(fz);const avw=cwid-(tk?26:6);while(pdf.getTextWidth(lab)>avw&&fz>6.4){fz-=0.3;pdf.setFontSize(fz)}let lines=pdf.splitTextToSize(lab,avw);pdf.text(lines,cx+4.5,cy+u*0.62-(lines.length>1?1.2:0));
+            if(tk){const lw=pdf.getTextWidth(lab)+cx+5;pdf.setDrawColor(70);pdf.setLineWidth(.2);pdf.line(lw,cy+u*0.75,cx+cwid-2,cy+u*0.75);pdf.text(S_(V[tk]||''),lw+1,cy+u*0.62)}});
+          yy+=nr*u*0.95}
+        else if(it.t==='ta'){
+          if(it.l){if(!dry){pdf.setFont('helvetica','normal');pdf.setFontSize(8.5);pdf.setTextColor(20);pdf.text(S_(it.l),ix,yy+u*0.65)}yy+=u*0.85}
+          pdf.setFont('helvetica','normal');pdf.setFontSize(8.5);const lines=pdf.splitTextToSize(S_(V[it.k]||''),iw-1),nl=Math.max(it.n,lines.length),pitch=u*0.95;
+          if(!dry){pdf.setDrawColor(90);pdf.setLineWidth(.2);pdf.setTextColor(20);for(let i=0;i<nl;i++){pdf.line(ix,yy+(i+1)*pitch-1,ix+iw,yy+(i+1)*pitch-1);if(lines[i])pdf.text(lines[i],ix+.5,yy+(i+1)*pitch-1.6)}}
+          yy+=nl*pitch+1}
+        else if(it.t==='p'||it.t==='pe'){const txt=it.t==='pe'?(V[it.k]!==undefined?V[it.k]:it.def):it.x,fs=it.c?8.5:6.5;pdf.setFont('helvetica','normal');pdf.setFontSize(fs);
+          const ps=String(txt).split('\n').flatMap(p=>pdf.splitTextToSize(S_(p),iw)),lh=fs*0.3528*1.28;
+          if(!dry){pdf.setTextColor(20);ps.forEach((l,i)=>pdf.text(l,it.c?ix+iw/2:ix,yy+lh*(i+1),it.c?{align:'center'}:{}))}yy+=ps.length*lh+(it.c?2.4:1.6)}
+        else if(it.t==='sig'){if(!dry){pdf.setDrawColor(60);pdf.setLineWidth(.25);pdf.line(ix+iw*.25,yy+u*1.1,ix+iw*.75,yy+u*1.1);pdf.setFont('helvetica','normal');pdf.setFontSize(8);pdf.setTextColor(20);pdf.text(S_(it.x),ix+iw/2,yy+u*1.1+3,{align:'center'});if(it.x2)pdf.text(S_(it.x2),ix+iw/2,yy+u*1.1+5.8,{align:'center'})}yy+=u*1.1+(it.x2?6.8:4)}
+        else if(it.t==='inl'){if(!dry){pdf.setFont('helvetica','normal');pdf.setFontSize(8.5);pdf.setTextColor(20);pdf.text(S_(`Se anexan a la presente ${V[it.k]||'______'} documento(s), fotografía(s), video(s), reporte(s) o medio(s) probatorio(s).`),ix,yy+u*0.65)}yy+=u*0.95}
+      }
+      yy+=0.8;hs.push(yy-y);hmax=Math.max(hmax,yy-y);x+=cw+gap;
+    });
+    if(!dry){x=mg;r.cols.forEach((c,ci)=>{const cw=avail*r.w[ci]/tot;if(!c.plain){pdf.setDrawColor(...ink);pdf.setLineWidth(.35);pdf.rect(x,y,cw,hmax)}x+=cw+gap})}
+    return hmax+rb;
+  }
+  const gapY=1.6;
+  const total=u=>{let y=mg+22+2;for(const r of spec.rows)y+=row(r,y,u,true)+gapY;return y-mg};
+  let u=6.2;while(u>3.4&&total(u)>H-2*mg)u-=0.2;
+  frame();let y=header(mg+1);y+=1;
+  for(const r of spec.rows){const h=row(r,y,u,true);if(y+h>H-mg){pdf.addPage();frame();y=mg+1}row(r,y,u,false);y+=h+gapY}
+  return pdf;
+}
+const FM_CSS_PRINT=FMCSS+`.fm{border-radius:10px}.fm textarea{overflow:visible}`;
+function printFrame(html){
+  try{
+    const old=document.getElementById('pfrm');if(old)old.remove();
+    const f=document.createElement('iframe');f.id='pfrm';f.setAttribute('aria-hidden','true');
+    f.style.cssText='position:fixed;left:-9999px;top:0;width:900px;height:700px;border:0';
+    document.body.appendChild(f);
+    const w=f.contentWindow,doc=f.contentDocument;doc.open();doc.write(html);doc.close();
+    setTimeout(()=>{try{w.focus();w.print()}catch(e){toast('No se pudo abrir la impresión. Usa Guardar PDF.')}},400);
+  }catch(e){toast('No se pudo abrir la impresión. Usa Guardar PDF.')}
+}
+function pageCss(opt){
+  const z=SIZES[opt.size]||SIZES.carta;
+  if(!z.h)return `@page{size:${z.w}mm auto;margin:2mm}`;
+  const land=opt.orient==='l';return `@page{size:${land?z.h:z.w}mm ${land?z.w:z.h}mm;margin:${z.w<150?8:12}mm}`;
+}
+function docHtml(d,opt){
+  const z=SIZES[opt.size]||SIZES.carta,tk=!z.h,LOGO=document.querySelector('img.logo');
+  const css=`${pageCss(opt)}*{box-sizing:border-box}body{margin:0;font:${tk?'11px':'13px'}/1.35 ${tk?'ui-monospace,Consolas,monospace':'"Segoe UI",Arial,sans-serif'};color:#111}
+  .hd{display:flex;align-items:center;gap:10px;${tk?'flex-direction:column;text-align:center;':''}border-bottom:2px solid #0c3b51;padding-bottom:8px}.hd img{width:${tk?46:64}px;height:${tk?42:58}px;border-radius:50%}.hd .t{flex:1}.hd b{font-size:${tk?15:20}px;color:#0c3b51}.hd .m{text-align:${tk?'center':'right'};font-size:11px;color:#556}
+  .casa{font:700 ${tk?20:26}px sans-serif;color:#0c3b51;margin:10px 0 0}h4{margin:12px 0 4px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#556}
+  .r{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #ccd;padding:4px 0}.g{font-size:10.5px;color:#667}.tt{display:flex;justify-content:space-between;border-top:2px solid #0c3b51;margin-top:12px;padding-top:6px;font-weight:700;font-size:${tk?15:18}px}.ex{font-size:10.5px;color:#556;margin-top:6px}.ft{text-align:center;font-size:10px;color:#889;margin-top:16px}`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(d.titulo)} · Casa ${d.casa}</title><style>${css}</style></head><body>
+  <div class="hd">${opt.logo&&LOGO?`<img src="${LOGO.src}" alt="">`:''}<div class="t"><b>Plaza de los Patos</b><div>${esc(d.titulo)}</div></div><div class="m">Folio ${esc(d.folio)}<br>${esc(d.fecha)}</div></div>
+  <div class="casa">Casa ${d.casa}</div>
+  ${d.secs.map(s=>`<h4>${esc(s.h)}</h4>${s.lines.map(l=>`<div class="r"><span>${esc(l.t)}${l.s?`<div class="g">${esc(l.s)}</div>`:''}</span><span style="white-space:nowrap">${esc(l.m)}</span></div>`).join('')}`).join('')}
+  <div class="tt"><span>${esc(d.total.label)}</span><span>${esc(d.total.m)}</span></div>${d.extra.map(e=>`<div class="ex">${esc(e)}</div>`).join('')}<div class="ft">Plaza de los Patos · Administración del condominio</div></body></html>`;
+}
+function printDoc(){if(!S.pr)return;printFrame(docHtml(S.pr.doc,S.pr))}
+
+/* --- pantalla de multas --- */
+const MUL_ESTADO={pendiente:['Pendiente','crit'],pagada:['Pagada','good'],cancelada:['Cancelada','warn']};
+function folioMulta(){const y=NOW.getFullYear();const n=Math.max(0,...S.mul.map(m=>{const x=String(m.folio||'').match(/^MU-(\d{4})-(\d+)$/);return x&&+x[1]===y?+x[2]:0}))+1;return `MU-${y}-${String(n).padStart(3,'0')}`}
+function renderMultas(){
+  const L=[...S.mul].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
+  const pend=sum(L.filter(m=>m.estado==='pendiente').map(m=>+m.monto||0)),cob=sum(L.filter(m=>m.estado==='pagada').map(m=>+m.monto||0));
+  const k=S.mform,ed=k&&k!=='new'?S.mul.find(x=>x.id===k)||{}:{};
+  const form=k?`<form id="mulf" class="form" style="margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:10px">
+    <label class="f">Casa<select id="mlc">${D.casas.map(h=>`<option value="${h.c}"${(ed.casa||S.casa)===h.c?' selected':''}>Casa ${h.c}${(DIR[h.c]||{}).n?' · '+esc(DIR[h.c].n):''}</option>`).join('')}</select></label>
+    <label class="f">Fecha de la infracción<input id="mlf" type="date" required value="${esc(ed.fecha||isoHoy())}"></label>
+    <label class="f">Concepto<input id="mlk" type="text" required value="${esc(ed.concepto||'Multa por infracción al reglamento')}"></label>
+    <label class="f">Importe de la multa<input id="mlm" type="number" min="0.01" step="any" required value="${ed.monto??''}" placeholder="500" style="font-size:16px"></label>
+    <label class="f">Artículo infringido<input id="mla" type="text" value="${esc(ed.articulo||'')}"></label>
+    <label class="f">Fecha límite de pago<input id="mll" type="date" value="${esc(ed.limite||'')}"></label>
+    <label class="f" style="grid-column:1/-1">Descripción de los hechos<textarea id="mld" rows="3" style="font:inherit;padding:8px;border:1px solid #bbb;border-radius:8px">${esc(ed.desc||'')}</textarea></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">${ed.id?'Guardar cambios':'Registrar multa'}</button><button class="btn ghost" type="button" data-mn="cancel">Cancelar</button></div></form>`:'';
+  $('#t-multas').innerHTML=`<div class="grid kpis">
+    <div class="kpi"><div class="l">Multas por cobrar</div><div class="v">${money(pend)}</div><div class="n">${L.filter(m=>m.estado==='pendiente').length} pendientes · se suman al adeudo de cada casa</div></div>
+    <div class="kpi"><div class="l">Multas cobradas</div><div class="v">${money(cob)}</div><div class="n">${L.filter(m=>m.estado==='pagada').length} pagadas · cuentan como ingreso</div></div></div>
+  <div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Multas</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-mn="new">＋ Nueva multa</button><button class="btn ghost" data-mn="fmt::acta">Acta en blanco</button><button class="btn ghost" data-mn="fmt::notif">Notificación en blanco</button></div></div>
+  <div class="sub" style="margin-top:4px">Al registrar una multa, su importe se suma al adeudo de la casa (aparece en el recibo como «Multas»). Al marcarla como pagada deja de sumar y se cuenta como ingreso. ${S.store==='db'?'Se guardan en la base compartida.':'Se guardan solo en este navegador.'}</div>${form}</div>
+  <div class="tw"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Casa</th><th>Concepto</th><th class="r">Importe</th><th>Estado</th><th>Formatos</th><th></th></tr></thead><tbody>
+  ${L.map(m=>`<tr><td class="mono">${esc(m.folio||'')}</td><td>${fecha(m.fecha)}</td><td>Casa ${m.casa}${(DIR[m.casa]||{}).n?'<div class="sub">'+esc(DIR[m.casa].n)+'</div>':''}</td><td>${esc(m.concepto)}${m.articulo?'<div class="sub">Art. '+esc(m.articulo)+'</div>':''}</td><td class="num">${money(+m.monto||0,2)}</td><td><span class="pill ${MUL_ESTADO[m.estado||'pendiente'][1]}">${MUL_ESTADO[m.estado||'pendiente'][0]}</span>${m.fpago?'<div class="sub">'+fecha(m.fpago)+'</div>':''}</td>
+   <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:acta">Acta</button> <button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:notif">Notificación</button></td>
+   <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="edit:${esc(m.id)}">Editar</button> ${m.estado==='pagada'?`<button class="btn sm ghost" data-mn="reabrir:${esc(m.id)}">Reabrir</button>`:`<button class="btn sm" data-mn="pago:${esc(m.id)}">Marcar pagada</button>`} ${m.estado==='pendiente'?`<button class="btn sm ghost" data-mn="cancelar:${esc(m.id)}">Cancelar multa</button> `:''}${S.mdel===m.id?`<button class="btn sm danger" data-mn="del2:${esc(m.id)}">Confirmar</button> <button class="btn sm ghost" data-mn="del0">No</button>`:`<button class="btn sm ghost" data-mn="del:${esc(m.id)}">Eliminar</button>`}</td></tr>`).join('')}
+  </tbody></table>${L.length?'':'<div class="empty">Aún no hay multas registradas.</div>'}</div>`;
+}
+async function mulAccion(v){
+  const [a,x,y]=v.split(':');
+  const upd=async(id,f)=>{const m=S.mul.find(q=>q.id===id);if(!m)return;const o={...m};delete o.id;Object.assign(o,f);await updX('mul',id,o);render()};
+  if(a==='new'){S.mform='new';return render()}
+  if(a==='cancel'){S.mform=null;return render()}
+  if(a==='edit'){S.mform=x;render();const el=$('#mulf');if(el)el.scrollIntoView({block:'center'});return}
+  if(a==='pago'){await upd(x,{estado:'pagada',fpago:isoHoy()});return toast('Multa marcada como pagada')}
+  if(a==='reabrir'){await upd(x,{estado:'pendiente',fpago:''});return toast('Multa pendiente de nuevo')}
+  if(a==='cancelar'){await upd(x,{estado:'cancelada'});return toast('Multa cancelada: ya no suma al adeudo')}
+  if(a==='del'){S.mdel=x;return render()}
+  if(a==='del0'){S.mdel=null;return render()}
+  if(a==='del2'){S.mdel=null;await delX('mul',x);toast('Multa eliminada');return render()}
+  if(a==='fmt'){const m=x?S.mul.find(q=>q.id===x):null;S.mf={id:x||null,kind:y,V:fmtDefaults(y,m)};return render()}
+  if(a==='close'){S.mf=null;return render()}
+  if(a==='save'){if(!S.mf||!S.mf.id)return;const m=S.mul.find(q=>q.id===S.mf.id);if(!m)return;const o={...m};delete o.id;o[S.mf.kind==='acta'?'acta':'notif']={...S.mf.V};await updX('mul',m.id,o);toast('Formato guardado');return render()}
+  if(a==='print'){if(!S.mf)return;const sp=FMT[S.mf.kind];printFrame(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(sp.title[0])}</title><style>@page{size:letter;margin:7mm}body{margin:0}${FM_CSS_PRINT}</style></head><body>${fmtHtml(sp,S.mf.V,false)}</body></html>`);return}
+  if(a==='pdf'){if(!(window.jspdf&&window.jspdf.jsPDF))return toast('No se pudo cargar el generador de PDF. Usa Imprimir.');
+    try{const f=S.mf,m=f.id?S.mul.find(q=>q.id===f.id):null;const pdf=fmtPdf(f.kind,f.V);await saveFile(`${FMT[f.kind].file}${m?'-casa-'+m.casa:'-en-blanco'}.pdf`,pdf.output('arraybuffer'))}catch(e){toast('No se pudo generar el PDF')}return}
+}
+function renderFmtModal(){
+  const el=$('#modal'),f=S.mf,sp=FMT[f.kind];
+  el.innerHTML=`<style>${FMCSS}</style><div class="mdl" data-mn="close"><div class="box" role="dialog" aria-modal="true" style="width:min(100%,920px)">
+   <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><h2 style="margin:0">${esc(sp.title[0].charAt(0)+sp.title[0].slice(1).toLowerCase())}${f.id?'':' (en blanco)'}</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${f.id?'<button class="btn" data-mn="save">Guardar cambios</button>':''}<button class="btn" data-mn="print">Imprimir</button><button class="btn ghost" data-mn="pdf">Descargar PDF</button><button class="btn ghost" data-mn="close">Cerrar</button></div></div>
+   <div class="legend" style="margin:0 0 10px">Escribe directamente sobre el formato. ${f.id?'«Guardar cambios» conserva lo que escribiste en esta multa.':'Este formato en blanco no se guarda; imprímelo o descárgalo.'}</div>
+   ${fmtHtml(sp,f.V,true)}</div></div>`;
+}
+
 /* ---------- historial de casa ---------- */
 function casaBar(r){
   return `<div class="bar">
@@ -1036,7 +1271,7 @@ function projects(){
    {n:'Inspección y reparación de fugas',a:'2023-2024',cost:'$250 + $162 por casa',rec:sum(D.fuga.map(sum)),pend:none(i=>D.fuga[i][0]===0||D.fuga[i][1]===0),notes:['Inspección $8,000 y reparación de fugas $15,000.','Saldo según hoja: $884 ("en deuda plaza").']},
    {n:'Pistón Erreka para portón',a:'2024',cost:'$250 por casa',rec:sum(D.pist),pend:none(i=>D.pist[i]===0),notes:['Aportación $12,400 + remanente anterior $20,000 − pistón $30,000 = $2,400 "en deuda".']},
    {n:'Puerta peatonal y llaveros TAG',a:'2023',cost:'$285 + $45 por llavero',rec:sum(D.peat.map(x=>x.apor)),pend:none(i=>C[i].p[5]),notes:[`${sum(D.peat.map(x=>x.ll.length))} llaveros registrados en ${D.peat.filter(x=>x.ll.length).length} casas.`]},
-  ].map((p,i)=>{const o=PO[i];return o?{...p,idx:i,ed:1,n:o.n||p.n,a:o.a||p.a,cost:o.cost||p.cost,notes:o.notes!=null?String(o.notes).split('\n').map(s=>s.trim()).filter(Boolean):p.notes}:{...p,idx:i}});
+  ].map((p,i)=>{const o=PO[i];return o?{...p,idx:i,ed:1,n:o.n||p.n,a:o.a||p.a,pend:Array.isArray(o.pend)?o.pend:p.pend,cost:o.cost||p.cost,notes:o.notes!=null?String(o.notes).split('\n').map(s=>s.trim()).filter(Boolean):p.notes}:{...p,idx:i}});
 }
 let PO={};
 async function savePO(){
@@ -1046,14 +1281,15 @@ async function savePO(){
 function pryStats(p){const N=D.casas.length,cost=+p.cost||0,ap=p.ap||{};let rec=0;const pend=[];for(let c=1;c<=N;c++){const v=+ap[c]||0;rec+=v;if(cost>0&&v<cost)pend.push(c)}return {N,cost,rec,meta:cost*N,pend}}
 function pryForm(){
   const k=S.pedit;if(!k)return '';
-  let v={n:'',a:String(CY),cost:'',desc:''},tit='Nuevo proyecto',base=false;
-  if(String(k).startsWith('b')){const i=+String(k).slice(1),p=projects()[i];base=true;tit='Editar proyecto: '+p.n;v={n:p.n,a:p.a,cost:p.cost,desc:p.notes.join('\n')}}
+  let v={n:'',a:String(CY),cost:'',desc:''},tit='Nuevo proyecto',base=false,pendSel=null;
+  if(String(k).startsWith('b')){const i=+String(k).slice(1),p=projects()[i];base=true;pendSel=p.pend||[];tit='Editar proyecto: '+p.n;v={n:p.n,a:p.a,cost:p.cost,desc:p.notes.join('\n')}}
   else if(k!=='new'){const p=S.pry.find(x=>x.id===k);if(p){tit='Editar proyecto';v={n:p.n,a:p.a,cost:p.cost,desc:p.desc||''}}}
   return `<form id="prf" class="form" style="margin:14px 0;padding:14px;border:1px solid var(--line,#ccd);border-radius:12px"><h3 style="margin:0">${esc(tit)}</h3>
     <label class="f">Nombre del proyecto<input id="pfn" type="text" required value="${esc(v.n)}" placeholder="Ej. Pintura de fachada"></label>
     <label class="f">Año<input id="pfa" type="text" value="${esc(v.a)}" style="font-size:16px"></label>
     <label class="f">${base?'Costo (texto)':'Costo por casa'}<input id="pfc" ${base?'type="text"':'type="number" min="0" step="any"'} value="${esc(v.cost)}" placeholder="${base?'$250 por casa':'500'}" style="font-size:16px"></label>
     <label class="f">${base?'Notas (una por línea)':'Descripción / notas'}<textarea id="pfd" rows="4" style="font:inherit;padding:8px;border:1px solid #bbb;border-radius:8px">${esc(v.desc)}</textarea></label>
+    ${base?`<div class="f" style="grid-column:1/-1"><span>Casas pendientes de este proyecto (marca las que aún deben)</span><div class="chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${D.casas.map(h=>`<label style="display:inline-flex;gap:4px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:3px 9px"><input type="checkbox" class="pcc" value="${h.c}"${pendSel.includes(h.c)?' checked':''}> ${h.c}</label>`).join('')}</div><div style="display:flex;gap:8px;margin-top:6px"><button class="btn sm ghost" type="button" data-pcall="1">Marcar todas</button><button class="btn sm ghost" type="button" data-pcall="0">Quitar todas</button></div></div>`:''}
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">Guardar</button><button class="btn ghost" type="button" data-pcancel="1">Cancelar</button>${base&&PO[+String(k).slice(1)]?'<button class="btn ghost" type="button" data-pres="'+String(k).slice(1)+'">Restablecer original</button>':''}</div></form>`;
 }
 function pryCards(){
@@ -1167,6 +1403,7 @@ function docAdeudo(r,nota){
   if(r.recM.length)secs.push({h:`Recargo por morosidad ${CFG.pct}%`,lines:[{t:r.recM.map(v=>M3[v.i]).join(', '),s:`Desde ${MES[CFG.desde]}`,m:money(r.recT)}]});
   if(r.proy.length)secs.push({h:'Proyectos pendientes',lines:r.proy.map(p=>({t:p.name,s:p.abon?`Abonado ${money(p.abon)} de ${money(p.cost)}`:'',m:money(p.rem)}))});
   if(r.ajustes.length)secs.push({h:'Ajustes',lines:r.ajustes.map(a=>({t:a.concepto||(a.tipo==='condonacion'?'Condonación':'Cargo extra'),s:fecha(a.fecha),m:(a.tipo==='condonacion'?'-':'+')+money(a.monto)}))});
+  if(r.multas.length)secs.push({h:'Multas',lines:r.multas.map(a=>({t:a.concepto||'Multa',s:fecha(a.fecha)+(a.folio?' · '+a.folio:''),m:money(+a.monto||0)}))});
   if(r.credito)secs.push({h:'Saldo a favor',lines:[{t:'Aplicado a cuotas '+NOW.getFullYear(),s:'',m:'-'+money(r.credito)}]});
   const extra=[];if(nota)extra.push(nota);if(r.abonos.length)extra.push('Abonos ya descontados: '+money(r.abT));
   return {titulo:'Recibo de adeudo',folio:folio(r),fecha:TODAY,casa:r.c,file:`recibo-adeudo-casa-${r.c}.pdf`,secs,total:{label:'Total a pagar',m:money(r.total)},extra};
@@ -1249,6 +1486,7 @@ function openPrint(spec){
 }
 function renderModal(){
   const el=$('#modal');if(!el)return;
+  if(S.mf)return renderFmtModal();
   if(!S.pr){el.innerHTML='';return}
   const p=S.pr,d=p.doc,z=SIZES[p.size];
   const pw=z.h?Math.min(420,(p.orient==='l'?z.h:z.w)*1.9):z.w*3.6;
@@ -1268,8 +1506,8 @@ function renderModal(){
       <div class="tt r"><span>${esc(d.total.label)}</span><span>${esc(d.total.m)}</span></div>
       ${d.extra.map(e=>`<div class="g" style="margin-top:6px">${esc(e)}</div>`).join('')}
     </div>
-    <div class="bar" style="margin:0"><button class="btn" id="prgo">Guardar PDF para imprimir</button><button class="btn ghost" id="prcopy">Copiar texto</button></div>
-    <div class="legend">El PDF se guarda con el tamaño elegido. Ábrelo en tu equipo o celular y elige la impresora (USB, WiFi o Bluetooth) en su menú de imprimir. Esta página no puede ver ni elegir las impresoras de tu equipo.</div>
+    <div class="bar" style="margin:0"><button class="btn" id="prgo">Imprimir</button><button class="btn ghost" id="prpdf">Guardar PDF</button><button class="btn ghost" id="prcopy">Copiar texto</button></div>
+    <div class="legend">«Imprimir» abre el cuadro de impresión de tu equipo: ahí eliges la impresora disponible (USB, WiFi o Bluetooth) y el tamaño elegido ya queda configurado. «Guardar PDF» solo descarga el archivo.</div>
    </div></div>`;
 }
 
@@ -1636,6 +1874,7 @@ function cartaEstado(r,mes){
   const rc=sum(r.recM.filter(x=>x.i<=mes).map(x=>x.rec));if(rc>0)mot.push(['Recargo por morosidad',rc]);
   if(r.proyT>0)mot.push(['Proyectos pendientes',r.proyT]);
   if(r.ajT>0)mot.push(['Cargos adicionales',r.ajT]);
+  if(r.mulT>0)mot.push(['Multas pendientes',r.mulT]);
   return {ok:!mot.length,mot};
 }
 function docCarta(r){
@@ -1738,7 +1977,7 @@ function cartaPdf(J,d){
 function render(){
   rebuildG();R=calc();
   renderTabs();
-  const f={resumen:renderResumen,casas:renderCasas,recibo:renderRecibo,historial:renderHistorial,proyectos:renderProyectos,pagos:renderPagos,gastos:renderGastos,revision:renderRevision,reportes:renderReportes,directorio:renderDirectorio,carta:renderCarta};
+  const f={resumen:renderResumen,casas:renderCasas,recibo:renderRecibo,historial:renderHistorial,proyectos:renderProyectos,pagos:renderPagos,gastos:renderGastos,revision:renderRevision,reportes:renderReportes,directorio:renderDirectorio,carta:renderCarta,multas:renderMultas};
   const keep=document.activeElement&&document.activeElement.id;
   const pos=document.activeElement&&document.activeElement.selectionStart;
   f[S.tab]();
@@ -1752,14 +1991,16 @@ function openCasa(c){S.casa=+c;go('recibo');scrollTo(0,0)}
 /* ---------- eventos ---------- */
 document.addEventListener('click',async e=>{
   if(e.target.closest('a[data-go]'))e.preventDefault();
-  const t=e.target.closest('[data-ck],[data-cx],[data-clr],[data-ac],[data-df],[data-dedit],[data-dx],[data-dcp],[data-ry],[data-rx],[data-rsolo],[data-einfo],[data-go],[data-pr],[data-prx],[data-ultx],#prgo,#prcopy,[data-rsub],[data-xedit],[data-xedit0],[data-xdel],[data-xdel0],[data-xdel2],[data-gonew],[data-exp],[data-gx],[data-pnew],[data-pedit],[data-pdel],[data-pdel0],[data-pdel2],[data-pap],[data-pfull],[data-pcancel],[data-pres],[data-casa],[data-filt],[data-gcat],[data-gy],[data-edit],[data-edit0],[data-rp],[data-gedit],[data-gedit0],[data-gdel],[data-gdel0],[data-gdel2],#selall,#selnone,#impgo,#impno,#tpl,[data-nav],[data-pay],[data-del],[data-del2],[data-del0],#copy,#csv');
+  const t=e.target.closest('[data-ck],[data-cx],[data-clr],[data-ac],[data-df],[data-dedit],[data-dx],[data-dcp],[data-ry],[data-rx],[data-rsolo],[data-einfo],[data-go],[data-pr],[data-prx],[data-ultx],#prgo,#prpdf,#prcopy,[data-mn],[data-rsub],[data-xedit],[data-xedit0],[data-xdel],[data-xdel0],[data-xdel2],[data-gonew],[data-exp],[data-gx],[data-pnew],[data-pcall],[data-pedit],[data-pdel],[data-pdel0],[data-pdel2],[data-pap],[data-pfull],[data-pcancel],[data-pres],[data-casa],[data-filt],[data-gcat],[data-gy],[data-edit],[data-edit0],[data-rp],[data-gedit],[data-gedit0],[data-gdel],[data-gdel0],[data-gdel2],#selall,#selnone,#impgo,#impno,#tpl,[data-nav],[data-pay],[data-del],[data-del2],[data-del0],#copy,#csv');
   if(!t)return;
   if(t.dataset.cx)return cartaAccion(t.dataset.cx);
   if(t.dataset.ck)return cartaLog(t.dataset.ck);
   if(t.dataset.clr){const v=t.dataset.clr;if(v==='1'){S.clr=true;return render()}if(v==='0'){S.clr=false;return render()}
     try{Object.keys(localStorage).filter(k=>k.startsWith('plazapatos-')).forEach(k=>localStorage.removeItem(k))}catch(_){}
     S.clr=false;toast('Datos borrados. Recargando…');setTimeout(()=>location.reload(),600);return}
+  if(t.dataset.mn){if(t.classList.contains('mdl')&&e.target!==t)return;return mulAccion(t.dataset.mn)}
   if(t.dataset.gx)return gastosExport(t.dataset.gx);
+  if(t.dataset.pcall!==undefined){document.querySelectorAll('.pcc').forEach(x=>x.checked=t.dataset.pcall==='1');return}
   if(t.dataset.pnew){S.pedit='new';return render()}
   if(t.dataset.pedit){S.pedit=t.dataset.pedit;return render()}
   if(t.dataset.pcancel){S.pedit=null;return render()}
@@ -1791,7 +2032,8 @@ document.addEventListener('click',async e=>{
   if(t.dataset.pr){openPrint(t.dataset.pr);return}
   if(t.dataset.prx!==undefined){if(t.classList.contains('mdl')&&e.target!==t)return;S.pr=null;return render()}
   if(t.dataset.ultx){if(t.dataset.ultx==='copy'){const d=docPago(S.ult.pagos,S.ult.casa);return copyText(docText(d),'Recibo copiado')}S.ult=null;return render()}
-  if(t.id==='prgo')return savePdf();
+  if(t.id==='prgo')return printDoc();
+  if(t.id==='prpdf')return savePdf();
   if(t.id==='prcopy')return copyText(docText(S.pr.doc),'Recibo copiado');
   if(t.dataset.rsub){S.rsub=t.dataset.rsub;S.xedit=null;return render()}
   if(t.dataset.xedit){const [n,id]=t.dataset.xedit.split(':');S.xedit={n,id};render();return scrollTo(0,0)}
@@ -1852,7 +2094,8 @@ document.addEventListener('change',e=>{
   else if(e.target.id==='imp')readImport(e.target.files[0]);
   else if(e.target.id==='dimp'){dirImport(e.target.files[0]);e.target.value=''}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.pr){S.pr=null;render()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&(S.pr||S.mf)){S.pr=null;S.mf=null;render()}});
+document.addEventListener('input',e=>{const k=e.target&&e.target.dataset&&e.target.dataset.fk;if(k&&S.mf)S.mf.V[k]=e.target.type==='checkbox'?e.target.checked:e.target.value});
 document.addEventListener('toggle',e=>{if(e.target.id==='gdet')S.gopen=e.target.open},true);
 document.addEventListener('submit',async e=>{
   const id=e.target.id;
@@ -1917,11 +2160,20 @@ document.addEventListener('submit',async e=>{
     if(S.xedit){const x=S.xedit;S.xedit=null;await updX('aj',x.id,o);toast('Ajuste actualizado')}else{await addX('aj',o);toast('Ajuste guardado en la casa '+o.casa)}
     render();return;
   }
+  if(id==='mulf'){
+    e.preventDefault();
+    const monto=+$('#mlm').value;if(!(monto>0))return toast('Escribe un importe mayor a cero');
+    const k=S.mform,ex=k&&k!=='new'?S.mul.find(x=>x.id===k):null;
+    const o={casa:+$('#mlc').value,fecha:$('#mlf').value,concepto:$('#mlk').value.trim(),monto,articulo:$('#mla').value.trim(),limite:$('#mll').value,desc:$('#mld').value.trim(),estado:ex?ex.estado:'pendiente',fpago:ex?(ex.fpago||''):'',folio:ex?ex.folio:folioMulta(),ts:ex?ex.ts:Date.now()};
+    if(ex){if(ex.acta)o.acta=ex.acta;if(ex.notif)o.notif=ex.notif;S.mform=null;await updX('mul',ex.id,o);toast('Multa actualizada')}
+    else{S.mform=null;await addX('mul',o);toast('Multa registrada y sumada al adeudo de la casa '+o.casa)}
+    render();return;
+  }
   if(id==='prf'){
     e.preventDefault();
     const n=$('#pfn').value.trim();if(!n)return toast('Escribe el nombre del proyecto');
     const k=S.pedit;
-    if(String(k).startsWith('b')){PO[+String(k).slice(1)]={n,a:$('#pfa').value.trim(),cost:$('#pfc').value.trim(),notes:$('#pfd').value};S.pedit=null;await savePO();toast('Proyecto actualizado');render();return}
+    if(String(k).startsWith('b')){const ob={n,a:$('#pfa').value.trim(),cost:$('#pfc').value.trim(),notes:$('#pfd').value};const chk=[...document.querySelectorAll('.pcc')];if(chk.length){const sel=chk.filter(x=>x.checked).map(x=>+x.value),orig=projects()[+String(k).slice(1)];if(Array.isArray(orig.pend)||sel.length)ob.pend=sel}PO[+String(k).slice(1)]=ob;S.pedit=null;await savePO();toast('Proyecto actualizado');render();return}
     const o={n,a:$('#pfa').value.trim(),cost:+$('#pfc').value||0,desc:$('#pfd').value.trim()};
     if(k==='new'){o.ap={};o.ts=Date.now();S.pedit=null;await addX('pry',o);toast('Proyecto agregado')}
     else{const p=S.pry.find(x=>x.id===k)||{};o.ap=p.ap||{};o.ts=p.ts||Date.now();S.pedit=null;await updX('pry',k,o);toast('Proyecto actualizado')}
@@ -1994,7 +2246,7 @@ async function removeGasto(id){
   if(gastosCol&&!String(id).startsWith('l')){try{await db.doc('gastos/'+id).delete();return}catch(e){toast('No se pudo eliminar');return}}
   S.gastosX=S.gastosX.filter(x=>x.id!==id);lsGSave();render();
 }
-const XC={ing:{ls:'plazapatos-ingresos',col:'ingresos'},aj:{ls:'plazapatos-ajustes',col:'ajustes'},car:{ls:'plazapatos-cartas',col:'cartas'},pry:{ls:'plazapatos-proyectos',col:'proyectos'}};
+const XC={ing:{ls:'plazapatos-ingresos',col:'ingresos'},aj:{ls:'plazapatos-ajustes',col:'ajustes'},car:{ls:'plazapatos-cartas',col:'cartas'},pry:{ls:'plazapatos-proyectos',col:'proyectos'},mul:{ls:'plazapatos-multas',col:'multas'}};
 const xcol={};
 function xlsLoad(n){try{return JSON.parse(localStorage.getItem(XC[n].ls)||'[]')}catch(_){return[]}}
 function xlsSave(n){try{localStorage.setItem(XC[n].ls,JSON.stringify(S[n]))}catch(_){}}
@@ -2019,7 +2271,7 @@ async function saveCfg(){
   if(db){try{await db.doc('config/reglas').set(CFG)}catch(e){toast('Reglas guardadas solo en este navegador')}}
 }
 async function initStore(){
-  S.pagos=lsLoad();S.gastosX=lsGLoad();S.ing=xlsLoad('ing');S.aj=xlsLoad('aj');S.car=xlsLoad('car');S.pry=xlsLoad('pry');
+  S.pagos=lsLoad();S.gastosX=lsGLoad();S.ing=xlsLoad('ing');S.aj=xlsLoad('aj');S.car=xlsLoad('car');S.pry=xlsLoad('pry');S.mul=xlsLoad('mul');
   try{const b=JSON.parse(localStorage.getItem('plazapatos-base')||'null');if(b)BASE={...BASE,...b}}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-cfg')||'null');if(c)CFG={...CFG,...c};applyCfg()}catch(_){}
   try{const c=JSON.parse(localStorage.getItem('plazapatos-info')||'null');if(c){INFO=c;applyInfo()}}catch(_){}
@@ -2032,7 +2284,7 @@ async function initStore(){
     if(c){
       db=c;pagosCol=c.collection('pagos');S.store='db';S.pagos=[];
       db.doc('config/reglas').onSnapshot(s=>{if(s.exists){CFG={...CFG,...s.data()};applyCfg();render()}},()=>{});
-      for(const n of ['ing','aj','car','pry']){xcol[n]=c.collection(XC[n].col);S[n]=[];xcol[n].onSnapshot(s=>{S[n]=s.docs.map(d=>({id:d.id,...d.data()}));render()},()=>{xcol[n]=null;S[n]=xlsLoad(n);render()})}
+      for(const n of ['ing','aj','car','pry','mul']){xcol[n]=c.collection(XC[n].col);S[n]=[];xcol[n].onSnapshot(s=>{S[n]=s.docs.map(d=>({id:d.id,...d.data()}));render()},()=>{xcol[n]=null;S[n]=xlsLoad(n);render()})}
       db.doc('config/casas').onSnapshot(s=>{if(s.exists){INFO=(s.data()||{}).m||{};applyInfo();render()}},()=>{});
       db.doc('config/extras').onSnapshot(s=>{if(s.exists){const n=+(s.data()||{}).n||0;if(n!==EXTRA){applyExtra(n);render()}}},()=>{});
       db.doc('config/carta').onSnapshot(s=>{if(s.exists){CARTA={...CARTA,...(s.data()||{})};render()}},()=>{});
