@@ -320,7 +320,7 @@ const fyOf=f=>/^\d{4}/.test(f||'')?+String(f).slice(0,4):Y0;
 const yearM=(r,y)=>y>=Y0?r.my[y]:D.luz[y][r.c-1];
 const TODAY=NOW.toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
 
-const S={tab:'pagos',pr:null,ult:null,rsub:'general',ing:[],aj:[],car:[],cdel:null,xedit:null,xdel:null,pcon:'atrasado',exp:{},edit:null,imp:null,gastosX:[],pry:[],mul:[],evi:[],mx:null,exdel:null,mform:null,mf:null,mdel:null,pedit:null,pop:null,pdel:null,gedit:null,gdel:null,gopen:false,sel:{},selAmt:{},selCasa:0,q:'',filt:'todas',sort:'casa',casa:1,pagos:[],del:null,gq:'',gcat:'todas',gy:String(CY),store:'local'};
+const S={tab:'pagos',pr:null,ult:null,rsub:'general',ing:[],aj:[],car:[],cdel:null,xedit:null,xdel:null,pcon:'atrasado',exp:{},edit:null,imp:null,gastosX:[],pry:[],mul:[],evi:[],mtipo:'multa',mconv:false,mx:null,exdel:null,mform:null,mf:null,mdel:null,pedit:null,pop:null,pdel:null,gedit:null,gdel:null,gopen:false,sel:{},selAmt:{},selCasa:0,q:'',filt:'todas',sort:'casa',casa:1,pagos:[],del:null,gq:'',gcat:'todas',gy:String(CY),store:'local'};
 let db=null,pagosCol=null,gastosCol=null;
 
 /* ---------- cálculo ---------- */
@@ -598,6 +598,7 @@ function filtered(){
     if(S.filt==='crit'&&r.estado!=='crit')return false;
     if(S.filt==='hist'&&!(r.hist>0))return false;
     if(S.filt==='proy'&&!r.proy.length)return false;
+    if(S.filt==='multa'&&!r.mulT)return false;
     if(S.filt==='nohab'&&String(D.aut20[r.c-1].hab).toUpperCase()==='SI')return false;
     const mL=q.match(/^(?:llavero|tag|l)\s*(\d+)$/);
     if(mL)return D.peat[r.c-1].ll.includes(+mL[1]);
@@ -614,7 +615,7 @@ function filtered(){
 }
 function renderCasas(){
   const L=filtered();
-  const F=[['todas','Todas'],['warn','Con adeudo'],['crit','Crítico'],['ok','Al corriente'],['hist','Con cuotas atrasadas'],['proy','Con proyectos pendientes'],['nohab','Deshabitadas']];
+  const F=[['todas','Todas'],['warn','Con adeudo'],['crit','Crítico'],['ok','Al corriente'],['hist','Con cuotas atrasadas'],['proy','Con proyectos pendientes'],['multa','Con multas'],['nohab','Deshabitadas']];
   const tot=L.reduce((s,r)=>s+r.total,0);
   $('#t-casas').innerHTML=`
   ${addCasasPanel()}
@@ -626,7 +627,7 @@ function renderCasas(){
   <div class="bar">${F.map(([k,l])=>`<button class="chip" data-filt="${k}" aria-pressed="${S.filt===k}">${l}</button>`).join('')}</div>
   <div class="sub" style="margin-bottom:8px">${L.length} casa${L.length===1?'':'s'} · adeudo ${money(tot)}</div>
   <div class="tw"><table>
-    <thead><tr><th>Casa</th><th>Estado</th><th class="r">Cuotas atrasadas</th><th>Proyectos</th><th class="r">Cuotas ${NOW.getFullYear()}</th><th class="r">Recargo</th><th class="r">Abonos</th><th class="r">Total</th><th></th></tr></thead>
+    <thead><tr><th>Casa</th><th>Estado</th><th class="r">Cuotas atrasadas</th><th>Proyectos</th><th class="r">Cuotas ${NOW.getFullYear()}</th><th class="r">Recargo</th><th class="r">Abonos</th><th class="r">Multas</th><th class="r">Ajustes</th><th class="r">Total</th><th></th></tr></thead>
     <tbody>${L.map(r=>`<tr class="go" data-casa="${r.c}">
       <td class="mono"><b>${r.c}</b></td><td>${pill(r.estado)}</td>
       <td class="num">${r.hist>0?r.histMeses+' m · '+money(r.hist):'—'}</td>
@@ -634,6 +635,8 @@ function renderCasas(){
       <td class="num">${r.venc.length?r.venc.length+' m · '+money(r.v26):'—'}</td>
       <td class="num">${r.recT?money(r.recT):'—'}</td>
       <td class="num">${r.abT?money(r.abT):'—'}</td>
+      <td class="num">${r.mulT?money(r.mulT):'—'}</td>
+      <td class="num">${r.ajT?(r.ajT>0?'+':'−')+money(Math.abs(r.ajT)):'—'}</td>
       <td class="num"><b>${money(r.total)}</b></td>
       <td><button class="btn sm ghost" data-casa="${r.c}">Recibo</button></td></tr>`).join('')||''}</tbody></table>
     ${L.length?'':'<div class="empty">Ninguna casa coincide con la búsqueda.</div>'}</div>
@@ -649,6 +652,8 @@ function reciboText(r,nota){
   if(r.histY.length){L.push('CUOTAS ATRASADAS');for(const x of r.histY)L.push(`${x.y}: ${mesesTxt(x)} (${x.pend.length} × ${money(x.rate)}) = ${money(x.rem)}${x.abon?' (abonado '+money(x.abon)+')':''}`)}
   if(r.venc.length){L.push('');L.push(`CUOTAS ${NOW.getFullYear()} (${money(CUOTA)}/mes)`);L.push(r.venc.map(v=>M3[v.i]+(v.paid?` (falta ${money(v.falta)})`:'')).join(', ')+' = '+money(r.v26))}
   if(r.recM.length){L.push('');L.push(`RECARGO POR MOROSIDAD ${CFG.pct}%`);L.push(r.recM.map(v=>M3[v.i]).join(', ')+' = '+money(r.recT))}
+  if(r.multas.length){L.push('');L.push('MULTAS');for(const m of r.multas)L.push(`${m.concepto||'Multa'}${m.folio?' ('+m.folio+')':''}: ${money(+m.monto||0)}`)}
+  if(r.ajustes.length){L.push('');L.push('AJUSTES');for(const a of r.ajustes)L.push(`${a.concepto||(a.tipo==='condonacion'?'Condonación':'Cargo extra')}: ${a.tipo==='condonacion'?'-':'+'}${money(a.monto)}`)}
   if(r.proy.length){L.push('');L.push('PROYECTOS PENDIENTES');for(const p of r.proy)L.push(`${p.name}: ${money(p.rem)}${p.abon?' (abonado '+money(p.abon)+')':''}`)}
   if(r.ajustes.length){L.push('');L.push('AJUSTES');for(const a of r.ajustes)L.push(`${a.concepto||(a.tipo==='condonacion'?'Condonación':'Cargo extra')}: ${a.tipo==='condonacion'?'-':'+'}${money(a.monto)}`)}
   if(r.abonos.length){L.push('');L.push('ABONOS REGISTRADOS (ya descontados)');for(const a of r.abonos)L.push(`${fecha(a.fecha)} ${tipoTxt(a)}: ${money(a.monto)}`);if(r.credito)L.push('Saldo a favor aplicado: -'+money(r.credito))}
@@ -659,7 +664,7 @@ function reciboText(r,nota){
 const mesesTxt=x=>x.pend.map(m=>m.i>=0?M3[m.i]:'—').join(', ');
 const folio=r=>`AD-${NOW.getFullYear()}${pad(NOW.getMonth()+1)}-C${pad(r.c)}`;
 const fecha=f=>{if(!f)return'';const d=new Date(f+'T12:00:00');return isNaN(d)?f:d.toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})};
-const tipoTxt=a=>a.tipo==='cuota26'?'Cuota '+(a.mes>=0?MES[a.mes]:''):a.tipo==='proyecto'?(a.proy>=0&&D.pn[a.proy]?D.pn[a.proy]:'Proyecto'):(a.anio>0?(a.mesH>=0?MES[a.mesH]+' '+a.anio:'Cuotas '+a.anio):'Cuotas atrasadas');
+const tipoTxt=a=>a.tipo==='multa'?'Multa'+(a.mf?': '+a.mf:''):a.tipo==='cuota26'?'Cuota '+(a.mes>=0?MES[a.mes]:''):a.tipo==='proyecto'?(a.proy>=0&&D.pn[a.proy]?D.pn[a.proy]:'Proyecto'):(a.anio>0?(a.mesH>=0?MES[a.mesH]+' '+a.anio:'Cuotas '+a.anio):'Cuotas atrasadas');
 function renderRecibo(){
   const r=R.find(x=>x.c===S.casa)||R[0];
   const cur=r.c;
@@ -718,6 +723,7 @@ function pendItems(r,f='atrasado'){
       children:x.pend.map(m=>({k:k+'-'+m.i,parent:k,tipo:'historico',anio:x.y,mesH:m.i,label:m.i>=0?`${MES[m.i]} ${x.y}`:`Mes pendiente ${x.y}`,amt:m.rem,sub:''}))});
   }
   if(want('proyecto'))for(const p of r.proy)items.push({g:'Proyectos pendientes',k:'p'+p.i,tipo:'proyecto',proy:p.i,label:p.name,amt:p.rem,sub:p.abon?`Abonado ${money(p.abon)} de ${money(p.cost)}`:'Proyecto pendiente'});
+  if(want('multa'))for(const m of r.multas)items.push({g:'Multas',k:'mu'+m.id,tipo:'multa',mid:m.id,label:m.concepto||'Multa',amt:+m.monto||0,sub:(m.folio?m.folio+' · ':'')+fecha(m.fecha)});
   return items;
 }
 function flat(items){const o=[];for(const x of items){o.push(x);for(const c of x.children||[])o.push(c)}return o}
@@ -740,7 +746,7 @@ function renderPagos(){
     <form id="pp">
       <div class="form" style="margin-bottom:12px">
         <label class="f">Casa<select id="pc">${opts(S.casa)}</select></label>
-        <label class="f">Concepto<select id="pcon">${[['atrasado','Pago atrasado (todo el adeudo)'],['cuota26','Cuota mensual '+NOW.getFullYear()],['historico','Cuotas atrasadas (años anteriores)'],['proyecto','Proyectos']].map(([k,l])=>`<option value="${k}"${S.pcon===k?' selected':''}>${l}</option>`).join('')}</select></label>
+        <label class="f">Concepto<select id="pcon">${[['atrasado','Pago atrasado (todo el adeudo)'],['cuota26','Cuota mensual '+NOW.getFullYear()],['historico','Cuotas atrasadas (años anteriores)'],['proyecto','Proyectos'],['multa','Multas']].map(([k,l])=>`<option value="${k}"${S.pcon===k?' selected':''}>${l}</option>`).join('')}</select></label>
         <label class="f">Fecha de pago<input id="pfe" type="date" value="${isoHoy()}" required></label>
         <label class="f">Nota<input id="pn" type="text" placeholder="Efectivo, transferencia…"></label>
       </div>
@@ -1147,38 +1153,52 @@ function docHtml(d,opt){
 function printDoc(){if(!S.pr)return;printFrame(docHtml(S.pr.doc,S.pr))}
 
 /* --- pantalla de multas --- */
-const MUL_ESTADO={pendiente:['Pendiente','crit'],pagada:['Pagada','good'],cancelada:['Cancelada','warn']};
-function folioMulta(){const y=NOW.getFullYear();const n=Math.max(0,...S.mul.map(m=>{const x=String(m.folio||'').match(/^MU-(\d{4})-(\d+)$/);return x&&+x[1]===y?+x[2]:0}))+1;return `MU-${y}-${String(n).padStart(3,'0')}`}
+const MUL_ESTADO={aviso:['Llamada de atención','warn'],pendiente:['Pendiente','crit'],pagada:['Pagada','good'],cancelada:['Cancelada','warn']};
+function folioMulta(pf='MU'){const y=NOW.getFullYear(),re=new RegExp('^'+pf+'-(\\d{4})-(\\d+)$');const n=Math.max(0,...S.mul.map(m=>{const x=String(m.folio||'').match(re);return x&&+x[1]===y?+x[2]:0}))+1;return `${pf}-${y}-${String(n).padStart(3,'0')}`}
 function renderMultas(){
   const L=[...S.mul].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
+  const isLl=m=>m.tipo==='llamada';
   const pend=sum(L.filter(m=>m.estado==='pendiente').map(m=>+m.monto||0)),cob=sum(L.filter(m=>m.estado==='pagada').map(m=>+m.monto||0));
+  const nLl=L.filter(isLl).length;
+  const ord={};{const asc=[...S.mul].sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')||(a.ts||0)-(b.ts||0)),cn={};for(const m of asc){cn[m.casa]=(cn[m.casa]||0)+1;ord[m.id]=cn[m.casa]}}
   const k=S.mform,ed=k&&k!=='new'?S.mul.find(x=>x.id===k)||{}:{};
+  const tp=S.mconv?'multa':(ed.tipo||S.mtipo||'multa');
   const form=k?`<form id="mulf" class="form" style="margin:12px 0;padding:14px;border:1px solid var(--line);border-radius:10px">
+    <label class="f">Tipo<select id="mlt"><option value="llamada"${tp==='llamada'?' selected':''}>1ª llamada de atención (sin cobro)</option><option value="multa"${tp==='multa'?' selected':''}>Multa (se suma al adeudo)</option></select></label>
     <label class="f">Casa<select id="mlc">${D.casas.map(h=>`<option value="${h.c}"${(ed.casa||S.casa)===h.c?' selected':''}>Casa ${h.c}${(DIR[h.c]||{}).n?' · '+esc(DIR[h.c].n):''}</option>`).join('')}</select></label>
     <label class="f">Fecha de la infracción<input id="mlf" type="date" required value="${esc(ed.fecha||isoHoy())}"></label>
-    <label class="f">Concepto<input id="mlk" type="text" required value="${esc(ed.concepto||'Multa por infracción al reglamento')}"></label>
-    <label class="f">Importe de la multa<input id="mlm" type="number" min="0.01" step="any" required value="${ed.monto??''}" placeholder="500" style="font-size:16px"></label>
+    <label class="f">Concepto<input id="mlk" type="text" required value="${esc(S.mconv&&/llamada/i.test(ed.concepto||'')?'Multa por reincidencia (2ª infracción)':(ed.concepto||(tp==='llamada'?'Primera llamada de atención':'Multa por infracción al reglamento')))}"></label>
+    <label class="f">Importe de la multa <span class="sub">(solo si es multa)</span><input id="mlm" type="number" min="0" step="any" value="${(+ed.monto||'')}" placeholder="500" style="font-size:16px"></label>
     <label class="f">Artículo infringido<input id="mla" type="text" value="${esc(ed.articulo||'')}"></label>
     <label class="f">Fecha límite de pago<input id="mll" type="date" value="${esc(ed.limite||'')}"></label>
     <label class="f" style="grid-column:1/-1">Descripción de los hechos<textarea id="mld" rows="3" style="font:inherit;padding:8px;border:1px solid #bbb;border-radius:8px">${esc(ed.desc||'')}</textarea></label>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">${ed.id?'Guardar cambios':'Registrar multa'}</button><button class="btn ghost" type="button" data-mn="cancel">Cancelar</button></div></form>`:'';
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="submit">${S.mconv?'Convertir en multa':(ed.id?'Guardar cambios':'Registrar')}</button><button class="btn ghost" type="button" data-mn="cancel">Cancelar</button></div></form>`:'';
   $('#t-multas').innerHTML=`<div class="grid kpis">
+    <div class="kpi"><div class="l">Llamadas de atención</div><div class="v">${nLl}</div><div class="n">1ª infracción · sin cobro, con expediente</div></div>
     <div class="kpi"><div class="l">Multas por cobrar</div><div class="v">${money(pend)}</div><div class="n">${L.filter(m=>m.estado==='pendiente').length} pendientes · se suman al adeudo de cada casa</div></div>
     <div class="kpi"><div class="l">Multas cobradas</div><div class="v">${money(cob)}</div><div class="n">${L.filter(m=>m.estado==='pagada').length} pagadas · cuentan como ingreso</div></div></div>
-  <div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Multas</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-mn="new">＋ Nueva multa</button><button class="btn ghost" data-mn="fmt::acta">Acta en blanco</button><button class="btn ghost" data-mn="fmt::notif">Notificación en blanco</button></div></div>
-  <div class="sub" style="margin-top:4px">Al registrar una multa, su importe se suma al adeudo de la casa (aparece en el recibo como «Multas»). Al marcarla como pagada deja de sumar y se cuenta como ingreso. ${S.store==='db'?'Se guardan en la base compartida.':'Se guardan solo en este navegador.'}</div>${form}</div>
+  <div class="card" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Llamadas de atención y multas</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-mn="newll">＋ Generar expediente (1ª llamada de atención)</button><button class="btn" data-mn="new">＋ Nueva multa (2ª infracción)</button><button class="btn ghost" data-mn="fmt::acta">Acta en blanco</button><button class="btn ghost" data-mn="fmt::notif">Notificación en blanco</button></div></div>
+  <div class="sub" style="margin-top:4px">Primera infracción: se genera el expediente (acta y evidencia) como llamada de atención, sin cobro. Si la casa reincide, conviértela en multa: su importe se suma al adeudo y aparece en el recibo como «Multas». ${S.store==='db'?'Se guardan en la base compartida.':'Se guardan solo en este navegador.'}</div>${form}</div>
   <div class="tw"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Casa</th><th>Concepto</th><th class="r">Importe</th><th>Estado</th><th>Formatos</th><th></th></tr></thead><tbody>
-  ${L.map(m=>`<tr><td class="mono">${esc(m.folio||'')}</td><td>${fecha(m.fecha)}</td><td>Casa ${m.casa}${(DIR[m.casa]||{}).n?'<div class="sub">'+esc(DIR[m.casa].n)+'</div>':''}</td><td>${esc(m.concepto)}${m.articulo?'<div class="sub">Art. '+esc(m.articulo)+'</div>':''}</td><td class="num">${money(+m.monto||0,2)}</td><td><span class="pill ${MUL_ESTADO[m.estado||'pendiente'][1]}">${MUL_ESTADO[m.estado||'pendiente'][0]}</span>${m.fpago?'<div class="sub">'+fecha(m.fpago)+'</div>':''}</td>
-   <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:acta">Acta</button> <button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:notif">Notificación</button> <button class="btn sm" data-mn="exp:${esc(m.id)}">Expediente${evOf(m.id).length?' ('+evOf(m.id).length+')':''}</button></td>
-   <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="edit:${esc(m.id)}">Editar</button> ${m.estado==='pagada'?`<button class="btn sm ghost" data-mn="reabrir:${esc(m.id)}">Reabrir</button>`:`<button class="btn sm" data-mn="pago:${esc(m.id)}">Marcar pagada</button>`} ${m.estado==='pendiente'?`<button class="btn sm ghost" data-mn="cancelar:${esc(m.id)}">Cancelar multa</button> `:''}${S.mdel===m.id?`<button class="btn sm danger" data-mn="del2:${esc(m.id)}">Confirmar</button> <button class="btn sm ghost" data-mn="del0">No</button>`:`<button class="btn sm ghost" data-mn="del:${esc(m.id)}">Eliminar</button>`}</td></tr>`).join('')}
-  </tbody></table>${L.length?'':'<div class="empty">Aún no hay multas registradas.</div>'}</div>`;
+  ${L.map(m=>{const ll=isLl(m),st=ll?['Llamada de atención','warn']:MUL_ESTADO[m.estado||'pendiente'];return `<tr><td class="mono">${esc(m.folio||'')}</td><td>${fecha(m.fecha)}</td><td>Casa ${m.casa}${(DIR[m.casa]||{}).n?'<div class="sub">'+esc(DIR[m.casa].n)+'</div>':''}${ord[m.id]>1?'<div class="sub">'+ord[m.id]+'ª infracción de la casa</div>':''}</td><td>${esc(m.concepto)}${m.articulo?'<div class="sub">Art. '+esc(m.articulo)+'</div>':''}</td><td class="num">${ll?'—':money(+m.monto||0,2)}</td><td><span class="pill ${st[1]}">${st[0]}</span>${m.fpago?'<div class="sub">'+fecha(m.fpago)+'</div>':''}</td>
+   <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:acta">Acta</button> ${ll?'':`<button class="btn sm ghost" data-mn="fmt:${esc(m.id)}:notif">Notificación</button> `}<button class="btn sm" data-mn="exp:${esc(m.id)}">Expediente${evOf(m.id).length?' ('+evOf(m.id).length+')':''}</button></td>
+   <td style="white-space:nowrap"><button class="btn sm ghost" data-mn="edit:${esc(m.id)}">Editar</button> ${ll?`<button class="btn sm" data-mn="conv:${esc(m.id)}">Convertir en multa</button> `:(m.estado==='pagada'?`<button class="btn sm ghost" data-mn="reabrir:${esc(m.id)}">Reabrir</button> `:`<button class="btn sm" data-mn="pago:${esc(m.id)}">Marcar pagada</button> `)}${!ll&&m.estado==='pendiente'?`<button class="btn sm ghost" data-mn="cancelar:${esc(m.id)}">Cancelar multa</button> `:''}${S.mdel===m.id?`<button class="btn sm danger" data-mn="del2:${esc(m.id)}">Confirmar</button> <button class="btn sm ghost" data-mn="del0">No</button>`:`<button class="btn sm ghost" data-mn="del:${esc(m.id)}">Eliminar</button>`}</td></tr>`}).join('')}
+  </tbody></table>${L.length?'':'<div class="empty">Aún no hay llamadas de atención ni multas registradas.</div>'}</div>`;
+}
+async function pagarMulta(id,monto,fe){
+  const m=S.mul.find(q=>q.id===id);if(!m)return;
+  const o={...m};delete o.id;
+  if(monto>=(+m.monto||0)-0.005){o.estado='pagada';o.fpago=fe;await updX('mul',id,o)}
+  else{o.monto=Math.round(((+m.monto||0)-monto)*100)/100;await updX('mul',id,o);await addX('ing',{f:fe,c:'Abono a multa '+(m.folio||''),monto,nota:'Casa '+m.casa,ts:Date.now()})}
 }
 async function mulAccion(v){
   const [a,x,y]=v.split(':');
   const upd=async(id,f)=>{const m=S.mul.find(q=>q.id===id);if(!m)return;const o={...m};delete o.id;Object.assign(o,f);await updX('mul',id,o);render()};
-  if(a==='new'){S.mform='new';return render()}
-  if(a==='cancel'){S.mform=null;return render()}
-  if(a==='edit'){S.mform=x;render();const el=$('#mulf');if(el)el.scrollIntoView({block:'center'});return}
+  if(a==='new'){S.mform='new';S.mtipo='multa';S.mconv=false;return render()}
+  if(a==='newll'){S.mform='new';S.mtipo='llamada';S.mconv=false;return render()}
+  if(a==='conv'){S.mform=x;S.mconv=true;render();const el=$('#mulf');if(el)el.scrollIntoView({block:'center'});return}
+  if(a==='cancel'){S.mform=null;S.mconv=false;return render()}
+  if(a==='edit'){S.mform=x;S.mconv=false;render();const el=$('#mulf');if(el)el.scrollIntoView({block:'center'});return}
   if(a==='pago'){await upd(x,{estado:'pagada',fpago:isoHoy()});return toast('Multa marcada como pagada')}
   if(a==='reabrir'){await upd(x,{estado:'pendiente',fpago:''});return toast('Multa pendiente de nuevo')}
   if(a==='cancelar'){await upd(x,{estado:'cancelada'});return toast('Multa cancelada: ya no suma al adeudo')}
@@ -2205,8 +2225,8 @@ document.addEventListener('submit',async e=>{
     const casa=+$('#pc').value,fe=$('#pfe').value,nota=$('#pn').value.trim();
     const items=activos(pendItems(R.find(r=>r.c===casa),'todo'));
     if(!items.length)return toast('Marca al menos un concepto');
-    for(const x of items)await addPago({casa,tipo:x.tipo,mes:x.mes??-1,anio:x.anio??-1,mesH:x.mesH??-1,proy:x.proy??-1,monto:+(S.selAmt[x.k]??x.amt),fecha:fe,nota,ts:Date.now()},true);
-    S.ult={casa,pagos:items.map(x=>({tipo:x.tipo,mes:x.mes??-1,anio:x.anio??-1,mesH:x.mesH??-1,proy:x.proy??-1,monto:+(S.selAmt[x.k]??x.amt),fecha:fe,nota}))};
+    for(const x of items){if(x.tipo==='multa')await pagarMulta(x.mid,+(S.selAmt[x.k]??x.amt),fe);else await addPago({casa,tipo:x.tipo,mes:x.mes??-1,anio:x.anio??-1,mesH:x.mesH??-1,proy:x.proy??-1,monto:+(S.selAmt[x.k]??x.amt),fecha:fe,nota,ts:Date.now()},true)}
+    S.ult={casa,pagos:items.map(x=>({mf:x.label,tipo:x.tipo,mes:x.mes??-1,anio:x.anio??-1,mesH:x.mesH??-1,proy:x.proy??-1,monto:+(S.selAmt[x.k]??x.amt),fecha:fe,nota}))};
     S.sel={};S.selAmt={};render();toast(items.length+' pago'+(items.length>1?'s registrados':' registrado')+' en la casa '+casa);return;
   }
   if(id==='pf'){
@@ -2236,11 +2256,14 @@ document.addEventListener('submit',async e=>{
   }
   if(id==='mulf'){
     e.preventDefault();
-    const monto=+$('#mlm').value;if(!(monto>0))return toast('Escribe un importe mayor a cero');
-    const k=S.mform,ex=k&&k!=='new'?S.mul.find(x=>x.id===k):null;
-    const o={casa:+$('#mlc').value,fecha:$('#mlf').value,concepto:$('#mlk').value.trim(),monto,articulo:$('#mla').value.trim(),limite:$('#mll').value,desc:$('#mld').value.trim(),estado:ex?ex.estado:'pendiente',fpago:ex?(ex.fpago||''):'',folio:ex?ex.folio:folioMulta(),ts:ex?ex.ts:Date.now()};
-    if(ex){if(ex.acta)o.acta=ex.acta;if(ex.notif)o.notif=ex.notif;S.mform=null;await updX('mul',ex.id,o);toast('Multa actualizada')}
-    else{S.mform=null;await addX('mul',o);toast('Multa registrada y sumada al adeudo de la casa '+o.casa)}
+    const tipo=$('#mlt').value,monto=+$('#mlm').value||0;
+    if(tipo==='multa'&&!(monto>0))return toast('Escribe el importe de la multa');
+    const k=S.mform,ex=k&&k!=='new'?S.mul.find(x=>x.id===k):null,conv=S.mconv;
+    const estado=tipo==='llamada'?'aviso':(ex&&ex.estado&&ex.estado!=='aviso'?ex.estado:'pendiente');
+    const o={tipo,casa:+$('#mlc').value,fecha:$('#mlf').value,concepto:$('#mlk').value.trim(),monto:tipo==='llamada'?0:monto,articulo:$('#mla').value.trim(),limite:$('#mll').value,desc:$('#mld').value.trim(),estado,fpago:ex?(ex.fpago||''):'',folio:ex?ex.folio:(tipo==='llamada'?folioMulta('LA'):folioMulta('MU')),ts:ex?ex.ts:Date.now()};
+    S.mconv=false;
+    if(ex){if(ex.acta)o.acta=ex.acta;if(ex.notif)o.notif=ex.notif;S.mform=null;await updX('mul',ex.id,o);toast(conv?'La llamada de atención se convirtió en multa y se sumó al adeudo':'Registro actualizado')}
+    else{S.mform=null;await addX('mul',o);toast(tipo==='llamada'?'Llamada de atención registrada. Abre su expediente para subir la evidencia':'Multa registrada y sumada al adeudo de la casa '+o.casa)}
     render();return;
   }
   if(id==='prf'){
@@ -2283,8 +2306,8 @@ async function saveFile(name,data){
 /* ---------- exportar ---------- */
 async function exportCsv(){
   const L=filtered();
-  const rows=[['Casa','Estado','Meses atrasados','Cuotas atrasadas','Proyectos pendientes','Meses vencidos '+NOW.getFullYear(),'Cuotas '+NOW.getFullYear(),'Recargo','Abonos','Total']];
-  for(const r of L)rows.push([r.c,ESTADO[r.estado][0],r.histMeses,r.hist,r.proyT,r.venc.length,r.v26,r.recT,r.abT,r.total]);
+  const rows=[['Casa','Estado','Meses atrasados','Cuotas atrasadas','Proyectos pendientes','Meses vencidos '+NOW.getFullYear(),'Cuotas '+NOW.getFullYear(),'Recargo','Abonos','Multas','Ajustes','Total']];
+  for(const r of L)rows.push([r.c,ESTADO[r.estado][0],r.histMeses,r.hist,r.proyT,r.venc.length,r.v26,r.recT,r.abT,r.mulT,r.ajT,r.total]);
   const csv='﻿'+rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
   return saveFile(`adeudos-plaza-patos-${NOW.toISOString().slice(0,10)}.csv`,csv);
 }
